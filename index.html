@@ -67,15 +67,16 @@
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
-            font-size: 48px;
+            font-size: 56px;
             font-weight: bold;
             color: #333;
             text-shadow: 2px 2px 0 #fff;
             display: none;
             z-index: 20;
+            text-align: center;
         }
         
-        /* Stylizacja nowej legendy */
+        /* Legenda */
         #legend {
             margin-top: 20px;
             background: #333;
@@ -97,6 +98,7 @@
             gap: 20px;
             justify-content: center;
             align-items: center;
+            flex-wrap: wrap;
         }
         .control-item {
             display: flex;
@@ -140,34 +142,94 @@
         <canvas id="gameCanvas" width="1024" height="576"></canvas>
     </div>
 
-    <!-- Nowa Legenda -->
     <div id="legend">
         <h3>Legenda Sterowania</h3>
         <div class="controls-grid">
-            <div class="control-item">
-                <kbd>A</kbd> <kbd>D</kbd> Ruch
-            </div>
-            <div class="control-item">
-                <kbd>W</kbd> lub <kbd>Spacja</kbd> Skok
-            </div>
-            <div class="control-item">
-                <kbd>K</kbd> Szybki Atak (5 DMG)
-            </div>
-            <div class="control-item">
-                <kbd>L</kbd> Mocny Atak (15 DMG)
-            </div>
+            <div class="control-item"><kbd>A</kbd> <kbd>D</kbd> Ruch</div>
+            <div class="control-item"><kbd>W</kbd> lub <kbd>Spacja</kbd> Skok</div>
+            <div class="control-item"><kbd>K</kbd> Szybki Atak (5 DMG)</div>
+            <div class="control-item"><kbd>L</kbd> Mocny Atak (15 DMG)</div>
+            <div class="control-item"><kbd>R</kbd> Reset Gry</div>
         </div>
     </div>
 
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-
         const gravity = 0.7;
 
-        // Ładowanie twarzy przeciwnika ze wskazanego pliku
+        // Dźwięki
+        const sndAttack = new Audio('attack1.mp3');
+        const sndFinish = new Audio('finish.mp3');
+        const sndFatality = new Audio('fatality.mp3');
+
+        function playSound(audioObj) {
+            const sound = audioObj.cloneNode();
+            sound.play().catch(e => console.log('Audio disabled until user interaction'));
+        }
+
+        // Twarz wroga
         const enemyFace = new Image();
         enemyFace.src = 'image_fa6dc5.png';
+
+        // Cząsteczki (do rozpadu ciała i krwi)
+        let particles = [];
+
+        class Particle {
+            constructor(x, y, vx, vy, type, color, faceImg = null) {
+                this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+                this.type = type; this.color = color; this.faceImg = faceImg;
+                this.rotation = 0;
+                this.rotSpeed = (Math.random() - 0.5) * 0.4;
+                this.size = Math.random() * 5 + 3; // Rozmiar dla kropel krwi
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // Kolizja z podłogą, aby cząsteczki opadały na ziemię
+                if (this.y < canvas.height - 50) {
+                    this.vy += gravity;
+                    this.rotation += this.rotSpeed;
+                } else {
+                    this.y = canvas.height - 50;
+                    this.vy = 0;
+                    this.vx *= 0.5; // Tarcie
+                    this.rotSpeed = 0;
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                
+                if (this.type === 'blood') {
+                    // Krew
+                    ctx.fillStyle = this.color;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    // Kończyny i głowa
+                    ctx.strokeStyle = this.color;
+                    ctx.lineWidth = 5;
+                    ctx.lineCap = 'round';
+                    
+                    if (this.type === 'head') {
+                        if (this.faceImg && this.faceImg.complete) {
+                            ctx.drawImage(this.faceImg, -30, -30, 60, 60);
+                        } else {
+                            ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.stroke();
+                        }
+                    } else {
+                        ctx.beginPath(); ctx.moveTo(-20, 0); ctx.lineTo(20, 0); ctx.stroke();
+                    }
+                }
+                ctx.restore();
+            }
+        }
 
         class Sprite {
             constructor({ position, velocity, color, isEnemy = false }) {
@@ -176,21 +238,47 @@
                 this.width = 50;
                 this.height = 150;
                 this.lastKey = '';
-                this.attackBox = {
-                    position: { x: this.position.x, y: this.position.y },
-                    width: 100,
-                    height: 50
-                };
+                this.attackBox = { position: { x: this.position.x, y: this.position.y }, width: 100, height: 50 };
                 this.color = color;
                 this.isAttacking = false;
-                this.attackType = 0; // 1 = K (szybki), 2 = L (mocny)
+                this.attackType = 0;
                 this.health = 100;
                 this.isEnemy = isEnemy;
-                this.dead = false;
                 this.facingRight = !isEnemy;
+                
+                this.awaitingFatality = false;
+                this.shattered = false;
+            }
+
+            shatter() {
+                this.shattered = true;
+                const cx = this.position.x + this.width / 2;
+                const cy = this.position.y;
+                
+                // Części ciała
+                particles.push(new Particle(cx, cy+20, (Math.random()-0.5)*15, -Math.random()*15 - 5, 'head', this.color, this.isEnemy ? enemyFace : null));
+                particles.push(new Particle(cx, cy+60, (Math.random()-0.5)*15, -Math.random()*15, 'limb', this.color));
+                particles.push(new Particle(cx-15, cy+70, (Math.random()-0.5)*15, -Math.random()*15, 'limb', this.color));
+                particles.push(new Particle(cx+15, cy+70, (Math.random()-0.5)*15, -Math.random()*15, 'limb', this.color));
+                particles.push(new Particle(cx-15, cy+110, (Math.random()-0.5)*15, -Math.random()*15, 'limb', this.color));
+                particles.push(new Particle(cx+15, cy+110, (Math.random()-0.5)*15, -Math.random()*15, 'limb', this.color));
+
+                // Efekt krwi (dużo czerwonych cząsteczek lecących na wszystkie strony)
+                for(let i = 0; i < 50; i++) {
+                    particles.push(new Particle(
+                        cx + (Math.random() - 0.5) * 40, 
+                        cy + 50 + (Math.random() - 0.5) * 80, 
+                        (Math.random() - 0.5) * 25, 
+                        -Math.random() * 20, 
+                        'blood', 
+                        '#b71c1c' // Głęboki czerwony
+                    ));
+                }
             }
 
             drawStickman() {
+                if (this.shattered) return; 
+
                 ctx.strokeStyle = this.color;
                 ctx.lineWidth = 5;
                 ctx.lineCap = 'round';
@@ -199,7 +287,6 @@
                 const cx = this.position.x + this.width / 2;
                 const cy = this.position.y;
 
-                // Głowa
                 if (this.isEnemy && enemyFace.complete) {
                     const faceSize = 60;
                     ctx.drawImage(enemyFace, cx - faceSize / 2, cy - 15, faceSize, faceSize);
@@ -209,61 +296,52 @@
                     ctx.stroke();
                 }
 
-                // Tułów
+                let dropArm = this.awaitingFatality ? 30 : 0;
+
+                ctx.beginPath(); ctx.moveTo(cx, cy + 35); ctx.lineTo(cx, cy + 90); ctx.stroke();
+
                 ctx.beginPath();
-                ctx.moveTo(cx, cy + 35);
-                ctx.lineTo(cx, cy + 90);
+                ctx.moveTo(cx, cy + 90); ctx.lineTo(cx - 15, cy + 140); 
+                ctx.moveTo(cx, cy + 90); ctx.lineTo(cx + 15, cy + 140); 
                 ctx.stroke();
 
-                // Nogi
-                ctx.beginPath();
-                ctx.moveTo(cx, cy + 90);
-                ctx.lineTo(cx - 15, cy + 140); 
-                ctx.moveTo(cx, cy + 90);
-                ctx.lineTo(cx + 15, cy + 140); 
-                ctx.stroke();
-
-                // Ręce
                 ctx.beginPath();
                 const armY = cy + 50;
                 let handX = cx + (this.facingRight ? 30 : -30);
-                let handY = cy + 60;
+                let handY = cy + 60 + dropArm;
                 
-                if (this.isAttacking) {
-                    if (this.attackType === 1) {
-                        handX = cx + (this.facingRight ? 50 : -50);
-                        handY = cy + 50;
-                    } else if (this.attackType === 2) {
-                        handX = cx + (this.facingRight ? 60 : -60);
-                        handY = cy + 90;
+                if (this.isAttacking && !this.awaitingFatality) {
+                    if (this.attackType === 1) { handX = cx + (this.facingRight ? 50 : -50); handY = cy + 50; }
+                    else if (this.attackType === 2) { handX = cx + (this.facingRight ? 60 : -60); handY = cy + 90; }
+                }
+
+                ctx.moveTo(cx, armY); ctx.lineTo(handX, handY); ctx.stroke();
+
+                if (!this.awaitingFatality) {
+                    ctx.strokeStyle = '#8b4513';
+                    ctx.lineWidth = 6;
+                    ctx.beginPath();
+                    if (this.isAttacking && this.attackType === 2) {
+                        ctx.moveTo(handX - (this.facingRight ? 10 : -10), handY - 40);
+                        ctx.lineTo(handX + (this.facingRight ? 50 : -50), handY + 40);
+                    } else if (this.isAttacking && this.attackType === 1) {
+                        ctx.moveTo(handX - (this.facingRight ? 30 : -30), handY);
+                        ctx.lineTo(handX + (this.facingRight ? 70 : -70), handY);
+                    } else {
+                        ctx.moveTo(handX, handY - 50);
+                        ctx.lineTo(handX, handY + 30);
                     }
+                    ctx.stroke();
                 }
-
-                ctx.moveTo(cx, armY);
-                ctx.lineTo(handX, handY);
-                ctx.stroke();
-
-                // Patyk
-                ctx.strokeStyle = '#8b4513';
-                ctx.lineWidth = 6;
-                ctx.beginPath();
-                if (this.isAttacking && this.attackType === 2) {
-                    ctx.moveTo(handX - (this.facingRight ? 10 : -10), handY - 40);
-                    ctx.lineTo(handX + (this.facingRight ? 50 : -50), handY + 40);
-                } else if (this.isAttacking && this.attackType === 1) {
-                    ctx.moveTo(handX - (this.facingRight ? 30 : -30), handY);
-                    ctx.lineTo(handX + (this.facingRight ? 70 : -70), handY);
-                } else {
-                    ctx.moveTo(handX, handY - 50);
-                    ctx.lineTo(handX, handY + 30);
-                }
-                ctx.stroke();
             }
 
             update() {
                 this.drawStickman();
-                
-                if (this.dead) return;
+                if (this.shattered) return;
+
+                if (this.awaitingFatality) {
+                    this.position.x += Math.sin(Date.now() / 150) * 1.5;
+                }
 
                 this.attackBox.position.x = this.facingRight ? this.position.x + this.width / 2 : this.position.x + this.width / 2 - this.attackBox.width;
                 this.attackBox.position.y = this.position.y + 30;
@@ -283,7 +361,9 @@
             }
 
             attack(type) {
-                if (this.isAttacking) return;
+                if (this.isAttacking || this.awaitingFatality || this.shattered) return;
+                
+                playSound(sndAttack); 
                 this.isAttacking = true;
                 this.attackType = type;
                 this.attackBox.width = type === 1 ? 120 : 150;
@@ -294,33 +374,17 @@
             }
 
             takeHit(damage) {
-                this.health -= damage;
-                if (this.health <= 0) {
-                    this.health = 0;
-                    this.dead = true;
+                if (this.health > 0) {
+                    this.health -= damage;
+                    if (this.health <= 0) this.health = 0;
                 }
             }
         }
 
-        const player = new Sprite({
-            position: { x: 200, y: 0 },
-            velocity: { x: 0, y: 0 },
-            color: '#1e88e5'
-        });
+        const player = new Sprite({ position: { x: 200, y: 0 }, velocity: { x: 0, y: 0 }, color: '#1e88e5' });
+        const enemy = new Sprite({ position: { x: 750, y: 0 }, velocity: { x: 0, y: 0 }, color: '#e53935', isEnemy: true });
 
-        const enemy = new Sprite({
-            position: { x: 750, y: 0 },
-            velocity: { x: 0, y: 0 },
-            color: '#e53935',
-            isEnemy: true
-        });
-
-        const keys = {
-            a: { pressed: false },
-            d: { pressed: false },
-            w: { pressed: false },
-            space: { pressed: false }
-        };
+        const keys = { a: { pressed: false }, d: { pressed: false }, w: { pressed: false }, space: { pressed: false } };
 
         function rectangularCollision({ rectangle1, rectangle2 }) {
             return (
@@ -332,120 +396,161 @@
         }
 
         let gameOver = false;
-        function determineWinner() {
-            document.getElementById('result').style.display = 'block';
+
+        function determineWinner(isFatality = false) {
+            const res = document.getElementById('result');
+            res.style.display = 'block';
+            
             if (player.health === enemy.health) {
-                document.getElementById('result').innerHTML = 'REMIS';
+                res.innerHTML = 'REMIS';
+                res.style.color = '#333';
             } else if (player.health > enemy.health) {
-                document.getElementById('result').innerHTML = 'GNIAZDO NOSTALGII WYGRYWA!';
+                res.innerHTML = isFatality ? 'FATALITY!<br><span style="font-size:32px;">GNIAZDO NOSTALGII WYGRYWA</span>' : 'GNIAZDO NOSTALGII WYGRYWA!';
+                res.style.color = isFatality ? '#b71c1c' : '#333'; // Zmiana na krwisty czerwony
             } else {
-                document.getElementById('result').innerHTML = 'PRZEGRAŁEŚ!';
+                res.innerHTML = isFatality ? 'FATALITY!<br><span style="font-size:32px;">PRZEGRAŁEŚ</span>' : 'PRZEGRAŁEŚ!';
+                res.style.color = isFatality ? '#b71c1c' : '#333'; // Zmiana na krwisty czerwony
             }
             gameOver = true;
         }
 
+        function resetGame() {
+            player.health = 100; enemy.health = 100;
+            player.position = { x: 200, y: 0 }; enemy.position = { x: 750, y: 0 };
+            player.shattered = false; enemy.shattered = false;
+            player.awaitingFatality = false; enemy.awaitingFatality = false;
+            player.velocity = {x: 0, y: 0}; enemy.velocity = {x: 0, y: 0};
+            particles = [];
+            
+            document.getElementById('playerHealth').style.width = '100%';
+            document.getElementById('enemyHealth').style.width = '100%';
+            document.getElementById('result').style.display = 'none';
+            
+            if (gameOver) {
+                gameOver = false;
+                animate();
+            }
+        }
+
+        function handleHit(attacker, victim, damage) {
+            if (victim.shattered) return;
+
+            if (victim.awaitingFatality) {
+                victim.shatter();
+                playSound(sndFatality);
+                determineWinner(true);
+            } else {
+                victim.takeHit(damage);
+                document.getElementById(victim === enemy ? 'enemyHealth' : 'playerHealth').style.width = victim.health + '%';
+                
+                if (victim.health <= 0) {
+                    victim.awaitingFatality = true;
+                    playSound(sndFinish);
+                    
+                    const res = document.getElementById('result');
+                    res.style.display = 'block';
+                    res.innerHTML = 'FINISH HIM!';
+                    res.style.color = '#b71c1c';
+                }
+            }
+        }
+
         function updateAI() {
-            if (enemy.dead || player.dead || gameOver) {
+            if (enemy.shattered || player.shattered || gameOver) {
                 enemy.velocity.x = 0;
+                return;
+            }
+            if (enemy.awaitingFatality) {
+                enemy.velocity.x = 0; 
                 return;
             }
 
             const distanceX = player.position.x - enemy.position.x;
             enemy.facingRight = distanceX > 0;
 
-            if (Math.abs(distanceX) > 100) {
-                enemy.velocity.x = distanceX > 0 ? 3 : -3;
+            if (!player.awaitingFatality) {
+                if (Math.abs(distanceX) > 100) enemy.velocity.x = distanceX > 0 ? 3 : -3;
+                else enemy.velocity.x = 0;
+                
+                if (Math.random() < 0.02 && enemy.velocity.y === 0) enemy.velocity.y = -15;
+
+                if (Math.abs(distanceX) < 130 && !enemy.isAttacking) {
+                    if (Math.random() < 0.05) enemy.attack(Math.random() > 0.5 ? 1 : 2);
+                }
             } else {
                 enemy.velocity.x = 0;
-            }
-
-            if (Math.random() < 0.02 && enemy.velocity.y === 0) {
-                enemy.velocity.y = -15;
-            }
-
-            if (Math.abs(distanceX) < 130 && !enemy.isAttacking) {
-                if (Math.random() < 0.05) {
-                    enemy.attack(Math.random() > 0.5 ? 1 : 2);
-                }
+                if (Math.abs(distanceX) < 130 && Math.random() < 0.01) enemy.attack(2);
+                else if (Math.abs(distanceX) > 130) enemy.velocity.x = distanceX > 0 ? 3 : -3;
             }
         }
 
         function animate() {
-            if (gameOver) return;
+            if (gameOver && particles.length === 0) return; // Jeśli game over i brak animacji, nie odświeżaj klatek bez potrzeby
             window.requestAnimationFrame(animate);
 
-            ctx.fillStyle = '#e0e0e0';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            ctx.fillStyle = '#9e9e9e';
-            ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+            // Rysowanie tła, a cząsteczki "ubrudzą" je na podłodze
+            ctx.fillStyle = '#e0e0e0'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Trochę krwi może zostać na ziemi więc rysujemy ziemie pierwszą
+            ctx.fillStyle = '#9e9e9e'; ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+
+            particles.forEach(p => { p.update(); p.draw(); });
 
             player.update();
             enemy.update();
 
             player.facingRight = player.position.x < enemy.position.x;
-            if(!enemy.isEnemy) enemy.facingRight = enemy.position.x < player.position.x;
+            if (!enemy.isEnemy) enemy.facingRight = enemy.position.x < player.position.x;
 
             player.velocity.x = 0;
-            if (keys.a.pressed && player.lastKey === 'a') {
-                player.velocity.x = -5;
-            } else if (keys.d.pressed && player.lastKey === 'd') {
-                player.velocity.x = 5;
+            if (!player.awaitingFatality && !player.shattered) {
+                if (keys.a.pressed && player.lastKey === 'a') player.velocity.x = -5;
+                else if (keys.d.pressed && player.lastKey === 'd') player.velocity.x = 5;
             }
 
             updateAI();
 
             if (player.isAttacking && rectangularCollision({ rectangle1: player, rectangle2: enemy })) {
                 player.isAttacking = false;
-                enemy.takeHit(player.attackType === 1 ? 5 : 15);
-                document.getElementById('enemyHealth').style.width = enemy.health + '%';
+                handleHit(player, enemy, player.attackType === 1 ? 5 : 15);
             }
 
             if (enemy.isAttacking && rectangularCollision({ rectangle1: enemy, rectangle2: player })) {
                 enemy.isAttacking = false;
-                player.takeHit(enemy.attackType === 1 ? 5 : 15);
-                document.getElementById('playerHealth').style.width = player.health + '%';
-            }
-
-            if (enemy.health <= 0 || player.health <= 0) {
-                determineWinner();
+                handleHit(enemy, player, enemy.attackType === 1 ? 5 : 15);
             }
         }
 
         animate();
 
         window.addEventListener('keydown', (event) => {
-            if (player.dead || gameOver) return;
-
             switch (event.key.toLowerCase()) {
+                case 'r':
+                    resetGame();
+                    break;
                 case 'd':
-                    keys.d.pressed = true;
-                    player.lastKey = 'd';
+                    if (!player.awaitingFatality && !gameOver) { keys.d.pressed = true; player.lastKey = 'd'; }
                     break;
                 case 'a':
-                    keys.a.pressed = true;
-                    player.lastKey = 'a';
+                    if (!player.awaitingFatality && !gameOver) { keys.a.pressed = true; player.lastKey = 'a'; }
                     break;
                 case 'w':
                 case ' ':
-                    if (player.velocity.y === 0) player.velocity.y = -15;
+                    if (!player.awaitingFatality && !gameOver && player.velocity.y === 0) player.velocity.y = -15;
                     break;
                 case 'k':
-                    player.attack(1);
+                    if (!player.awaitingFatality && !gameOver) player.attack(1);
                     break;
                 case 'l':
-                    player.attack(2);
+                    if (!player.awaitingFatality && !gameOver) player.attack(2);
                     break;
             }
         });
 
         window.addEventListener('keyup', (event) => {
             switch (event.key.toLowerCase()) {
-                case 'd':
-                    keys.d.pressed = false;
-                    break;
-                case 'a':
-                    keys.a.pressed = false;
-                    break;
+                case 'd': keys.d.pressed = false; break;
+                case 'a': keys.a.pressed = false; break;
             }
         });
     </script>
