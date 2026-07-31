@@ -7,7 +7,7 @@
     <style>
         body {
             margin: 0;
-            background-color: #222;
+            background-color: #111;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -22,10 +22,10 @@
             display: inline-block;
         }
         canvas {
-            background-color: #e0e0e0;
-            border: 4px solid #fff;
+            background-color: #16213e;
+            border: 4px solid #444;
             border-radius: 8px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.8);
+            box-shadow: 0 0 30px rgba(0,0,0,0.9);
         }
         #ui {
             position: absolute;
@@ -45,21 +45,21 @@
             font-size: 18px;
             font-weight: bold;
             margin-bottom: 5px;
-            color: #333;
-            text-shadow: 1px 1px 0px #fff;
+            color: #fff;
+            text-shadow: 2px 2px 0px #000;
         }
         .health-bar-bg {
             width: 300px;
             height: 30px;
-            background: #d32f2f;
-            border: 3px solid #333;
+            background: #600000;
+            border: 3px solid #222;
             border-radius: 5px;
             position: relative;
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.3);
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
         }
         .health-bar-fill {
             height: 100%;
-            background: #4caf50;
+            background: linear-gradient(90deg, #4caf50, #81c784);
             width: 100%;
             transition: width 0.15s ease-out;
         }
@@ -70,8 +70,8 @@
             transform: translate(-50%, -50%);
             font-size: 56px;
             font-weight: bold;
-            color: #333;
-            text-shadow: 2px 2px 0 #fff;
+            color: #fff;
+            text-shadow: 4px 4px 0 #000, -2px -2px 0 #d32f2f;
             display: none;
             z-index: 20;
             text-align: center;
@@ -79,7 +79,7 @@
         
         #legend {
             margin-top: 20px;
-            background: #333;
+            background: #222;
             padding: 15px 30px;
             border-radius: 10px;
             border: 2px solid #555;
@@ -104,7 +104,7 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            font-size: 16px;
+            font-size: 14px;
         }
         kbd {
             background-color: #eee;
@@ -114,7 +114,7 @@
             color: #333;
             display: inline-block;
             font-family: sans-serif;
-            font-size: 14px;
+            font-size: 12px;
             font-weight: 700;
             padding: 4px 8px;
             white-space: nowrap;
@@ -146,10 +146,11 @@
         <h3>Legenda Sterowania</h3>
         <div class="controls-grid">
             <div class="control-item"><kbd>A</kbd> <kbd>D</kbd> Ruch</div>
-            <div class="control-item"><kbd>W</kbd> lub <kbd>Spacja</kbd> Skok</div>
-            <div class="control-item"><kbd>K</kbd> Szybki Atak (5 DMG)</div>
-            <div class="control-item"><kbd>L</kbd> Mocny Atak (15 DMG)</div>
-            <div class="control-item"><kbd>R</kbd> Reset Gry</div>
+            <div class="control-item"><kbd>W</kbd> / <kbd>Spacja</kbd> Skok</div>
+            <div class="control-item"><kbd>J</kbd> Przewrót (Unik)</div>
+            <div class="control-item"><kbd>K</kbd> Szybki Atak</div>
+            <div class="control-item"><kbd>L</kbd> Mocny Atak</div>
+            <div class="control-item"><kbd>R</kbd> Reset</div>
         </div>
     </div>
 
@@ -158,102 +159,137 @@
         const ctx = canvas.getContext('2d');
         const gravity = 0.7;
 
-        // Limiter FPS
         const fps = 60;
         const fpsInterval = 1000 / fps;
         let then = performance.now();
 
-        // Dźwięki
         const sndAttack = new Audio('attack1.mp3');
         const sndFinish = new Audio('finish.mp3');
         const sndFatality = new Audio('fatality.mp3');
 
         function playSound(audioObj) {
             const sound = audioObj.cloneNode();
-            sound.play().catch(e => console.log('Brak interakcji: wyciszono dźwięk'));
+            sound.play().catch(e => console.log('Wymagana interakcja gracza dla dźwięku'));
         }
 
-        // Twarz wroga
         const enemyFace = new Image();
         enemyFace.src = 'image_fa6dc5.png';
 
         let particles = [];
 
-        // Rysowanie Miecza (Canvas API)
+        // --- RYSOWANIE ARENY ŚREDNIOWIECZNEJ ---
+        function drawArena(ctx, canvas) {
+            // Mroczne niebo
+            let sky = ctx.createLinearGradient(0, 0, 0, canvas.height - 200);
+            sky.addColorStop(0, '#0f0c29');
+            sky.addColorStop(0.5, '#302b63');
+            sky.addColorStop(1, '#24243e');
+            ctx.fillStyle = sky;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Krwawy księżyc / słońce
+            ctx.fillStyle = '#e53935';
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, 200, 100, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.shadowColor = '#e53935';
+            ctx.shadowBlur = 30;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+
+            // Mur Koloseum w tle
+            ctx.fillStyle = '#1e2124'; // Ciemny kamień
+            ctx.fillRect(0, canvas.height - 220, canvas.width, 170);
+            ctx.fillStyle = '#282b30'; // Gzyms
+            ctx.fillRect(0, canvas.height - 230, canvas.width, 10);
+
+            // Łuki w murze
+            ctx.fillStyle = '#111';
+            for (let i = 0; i < 9; i++) {
+                ctx.beginPath();
+                ctx.arc(80 + i * 120, canvas.height - 110, 35, Math.PI, 0);
+                ctx.fillRect(45 + i * 120, canvas.height - 110, 70, 60);
+                ctx.fill();
+            }
+
+            // Czerwone sztandary
+            ctx.fillStyle = '#7f0000';
+            ctx.fillRect(200, canvas.height - 220, 50, 130);
+            ctx.fillRect(canvas.width - 250, canvas.height - 220, 50, 130);
+            // Złote wykończenia sztandarów
+            ctx.fillStyle = '#ffb300';
+            ctx.fillRect(200, canvas.height - 95, 50, 5);
+            ctx.fillRect(canvas.width - 250, canvas.height - 95, 50, 5);
+
+            // Grunt (Ziemia)
+            let ground = ctx.createLinearGradient(0, canvas.height - 50, 0, canvas.height);
+            ground.addColorStop(0, '#2c1e16'); // Ciemna ziemia
+            ground.addColorStop(1, '#140c08');
+            ctx.fillStyle = ground;
+            ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+            // Krawędź ziemi
+            ctx.fillStyle = '#111';
+            ctx.fillRect(0, canvas.height - 52, canvas.width, 2);
+        }
+
         function drawSword(ctx, x, y, angle) {
             ctx.save();
             ctx.translate(x, y);
             ctx.rotate(angle);
 
-            // Delikatny cień
-            ctx.shadowColor = 'rgba(0,0,0,0.3)';
-            ctx.shadowBlur = 4;
-            ctx.shadowOffsetX = 2;
-            ctx.shadowOffsetY = 2;
+            ctx.shadowColor = 'rgba(0,0,0,0.5)';
+            ctx.shadowBlur = 5;
+            ctx.shadowOffsetX = 3;
+            ctx.shadowOffsetY = 3;
 
             // Ostrze
-            ctx.fillStyle = '#cfd8dc'; // jasne srebro
-            ctx.strokeStyle = '#78909c'; // ciemne srebro
+            ctx.fillStyle = '#cfd8dc'; 
+            ctx.strokeStyle = '#78909c'; 
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(-4, 0);
-            ctx.lineTo(-3, -70);
-            ctx.lineTo(0, -85); // ostry czubek
-            ctx.lineTo(3, -70);
-            ctx.lineTo(4, 0);
+            ctx.moveTo(-4, 0); ctx.lineTo(-3, -70);
+            ctx.lineTo(0, -85); 
+            ctx.lineTo(3, -70); ctx.lineTo(4, 0);
             ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
+            ctx.fill(); ctx.stroke();
 
-            // Zbrocze (rowek na środku)
+            // Zbrocze
             ctx.strokeStyle = '#90a4ae';
             ctx.lineWidth = 1;
             ctx.beginPath();
-            ctx.moveTo(0, -5);
-            ctx.lineTo(0, -65);
+            ctx.moveTo(0, -5); ctx.lineTo(0, -65);
             ctx.stroke();
 
-            // Jelec (Crossguard)
-            ctx.fillStyle = '#ffb300'; // złoto
+            // Jelec
+            ctx.fillStyle = '#ffb300'; 
             ctx.strokeStyle = '#b08d00';
             ctx.lineWidth = 2;
             ctx.beginPath();
-            ctx.moveTo(-15, -2);
-            ctx.lineTo(15, -2);
-            ctx.lineTo(12, 4);
-            ctx.lineTo(-12, 4);
+            ctx.moveTo(-15, -2); ctx.lineTo(15, -2);
+            ctx.lineTo(12, 4); ctx.lineTo(-12, 4);
             ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
+            ctx.fill(); ctx.stroke();
 
             // Rękojeść
-            ctx.fillStyle = '#5d4037'; // brązowa skóra
+            ctx.fillStyle = '#5d4037'; 
             ctx.strokeStyle = '#3e2723';
-            ctx.beginPath();
-            ctx.rect(-3, 4, 6, 16);
-            ctx.fill();
-            ctx.stroke();
+            ctx.beginPath(); ctx.rect(-3, 4, 6, 16);
+            ctx.fill(); ctx.stroke();
 
-            // Głowica (Pommel)
+            // Głowica
             ctx.fillStyle = '#ffb300';
-            ctx.beginPath();
-            ctx.arc(0, 23, 5, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.stroke();
+            ctx.beginPath(); ctx.arc(0, 23, 5, 0, Math.PI * 2);
+            ctx.fill(); ctx.stroke();
 
             ctx.restore();
         }
 
-        // Generowanie iskier podczas trafienia
         function spawnImpact(x, y) {
             for (let i = 0; i < 15; i++) {
                 particles.push(new Particle(
-                    x + (Math.random() - 0.5) * 20,
-                    y + (Math.random() - 0.5) * 20,
-                    (Math.random() - 0.5) * 15,
-                    (Math.random() - 0.5) * 15,
-                    'spark',
-                    '#ffea00' // Jasny żółty
+                    x + (Math.random() - 0.5) * 20, y + (Math.random() - 0.5) * 20,
+                    (Math.random() - 0.5) * 15, (Math.random() - 0.5) * 15,
+                    'spark', '#ffea00'
                 ));
             }
         }
@@ -262,8 +298,7 @@
             constructor(x, y, vx, vy, type, color, faceImg = null) {
                 this.x = x; this.y = y; this.vx = vx; this.vy = vy;
                 this.type = type; this.color = color; this.faceImg = faceImg;
-                this.rotation = 0;
-                this.rotSpeed = (Math.random() - 0.5) * 0.4;
+                this.rotation = 0; this.rotSpeed = (Math.random() - 0.5) * 0.4;
                 
                 if (type === 'blood') {
                     this.size = Math.random() * 5 + 3;
@@ -275,45 +310,31 @@
             }
 
             update() {
-                this.x += this.vx;
-                this.y += this.vy;
-                
+                this.x += this.vx; this.y += this.vy;
                 if (this.type === 'spark') {
-                    this.life--;
-                    this.vy += gravity * 0.5; // Iskry wolniej opadają
-                    this.size *= 0.93; // Zmniejszają się
+                    this.life--; this.vy += gravity * 0.5; this.size *= 0.93;
                 } else if (this.y < canvas.height - 50) {
-                    this.vy += gravity;
-                    this.rotation += this.rotSpeed;
+                    this.vy += gravity; this.rotation += this.rotSpeed;
                 } else {
-                    this.y = canvas.height - 50;
-                    this.vy = 0;
-                    this.vx *= 0.5;
-                    this.rotSpeed = 0;
+                    this.y = canvas.height - 50; this.vy = 0;
+                    this.vx *= 0.5; this.rotSpeed = 0;
                 }
             }
 
             draw() {
                 ctx.save();
-                ctx.translate(this.x, this.y);
-                ctx.rotate(this.rotation);
+                ctx.translate(this.x, this.y); ctx.rotate(this.rotation);
                 
                 if (this.type === 'blood') {
                     ctx.fillStyle = this.color;
-                    ctx.beginPath();
-                    ctx.arc(0, 0, this.size, 0, Math.PI * 2);
-                    ctx.fill();
+                    ctx.beginPath(); ctx.arc(0, 0, this.size, 0, Math.PI * 2); ctx.fill();
                 } else if (this.type === 'spark') {
                     ctx.fillStyle = this.color;
                     ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
-                    ctx.beginPath();
-                    ctx.arc(0, 0, this.size, 0, Math.PI * 2);
-                    ctx.fill();
+                    ctx.beginPath(); ctx.arc(0, 0, this.size, 0, Math.PI * 2); ctx.fill();
                     ctx.globalAlpha = 1.0;
                 } else {
-                    ctx.strokeStyle = this.color;
-                    ctx.lineWidth = 5;
-                    ctx.lineCap = 'round';
+                    ctx.strokeStyle = this.color; ctx.lineWidth = 5; ctx.lineCap = 'round';
                     if (this.type === 'head') {
                         if (this.faceImg && this.faceImg.complete) {
                             ctx.drawImage(this.faceImg, -30, -30, 60, 60);
@@ -338,18 +359,28 @@
                 this.attackBox = { position: { x: this.position.x, y: this.position.y }, width: 100, height: 50 };
                 this.color = color;
                 
-                // Zmienne do nowej animacji ataku
                 this.isAttacking = false;
                 this.attackType = 0;
                 this.attackProgress = 0; 
                 this.attackSpeed = 0; 
                 this.attackDealtDamage = false; 
 
+                // Dodane zmienne do Przewrotu (Rolla)
+                this.isRolling = false;
+                this.rollProgress = 0;
+
                 this.health = 100;
                 this.isEnemy = isEnemy;
                 this.facingRight = !isEnemy;
                 this.awaitingFatality = false;
                 this.shattered = false;
+            }
+
+            roll() {
+                // Nie można rollować podczas ataku, śmierci lub gdy już się rolluje
+                if (this.isAttacking || this.isRolling || this.awaitingFatality || this.shattered) return;
+                this.isRolling = true;
+                this.rollProgress = 0;
             }
 
             shatter() {
@@ -376,16 +407,25 @@
             drawStickman() {
                 if (this.shattered) return; 
 
+                ctx.save(); // Zapisujemy stan canvasa by móc obracać postać
+                
+                const cx = this.position.x + this.width / 2;
+                const cy = this.position.y;
+                const dir = this.facingRight ? 1 : -1;
+
+                // Obrót postaci podczas przewrotu
+                if (this.isRolling) {
+                    const pivotY = cy + this.height / 2;
+                    ctx.translate(cx, pivotY);
+                    ctx.rotate(dir * this.rollProgress * Math.PI * 2); // Pełen obrót (360 stopni)
+                    ctx.translate(-cx, -pivotY);
+                }
+
                 ctx.strokeStyle = this.color;
                 ctx.lineWidth = 5;
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
 
-                const cx = this.position.x + this.width / 2;
-                const cy = this.position.y;
-                const dir = this.facingRight ? 1 : -1;
-
-                // Twarz / Głowa
                 if (this.isEnemy && enemyFace.complete) {
                     const faceSize = 60;
                     ctx.drawImage(enemyFace, cx - faceSize / 2, cy - 15, faceSize, faceSize);
@@ -397,53 +437,67 @@
 
                 let dropArm = this.awaitingFatality ? 30 : 0;
 
-                // Tułów i nogi
                 ctx.beginPath(); ctx.moveTo(cx, cy + 35); ctx.lineTo(cx, cy + 90); ctx.stroke();
+                
+                // Nogi (lekko ugięte podczas rolla)
+                let crouch = this.isRolling ? -20 : 0;
                 ctx.beginPath();
-                ctx.moveTo(cx, cy + 90); ctx.lineTo(cx - 15, cy + 140); 
-                ctx.moveTo(cx, cy + 90); ctx.lineTo(cx + 15, cy + 140); 
+                ctx.moveTo(cx, cy + 90); ctx.lineTo(cx - 15, cy + 140 + crouch); 
+                ctx.moveTo(cx, cy + 90); ctx.lineTo(cx + 15, cy + 140 + crouch); 
                 ctx.stroke();
 
-                // Animacja rąk i miecza
                 const armY = cy + 50;
                 let handX = cx + dir * 30;
                 let handY = cy + 60 + dropArm;
-                let swordAngle = dir * (Math.PI / 4); // Domyślnie lekko do przodu/góry
+                let swordAngle = dir * (Math.PI / 4);
                 
-                if (this.isAttacking && !this.awaitingFatality) {
-                    const p = this.attackProgress; // Postęp od 0 do 1
-
+                if (this.isAttacking && !this.awaitingFatality && !this.isRolling) {
+                    const p = this.attackProgress;
                     if (this.attackType === 1) {
-                        // Szybki atak - pchnięcie
                         handX = cx + dir * (30 + Math.sin(p * Math.PI) * 50);
                         handY = cy + 50;
-                        swordAngle = dir * (Math.PI / 2); // Miecz poziomo
+                        swordAngle = dir * (Math.PI / 2);
                     } else if (this.attackType === 2) {
-                        // Mocny atak - zamach znad głowy
                         handX = cx + dir * (30 + Math.sin(p * Math.PI) * 40);
                         handY = cy + 60 - Math.sin(p * Math.PI) * 30;
-                        // Płynna zmiana kąta z tyłu do przodu
                         swordAngle = dir * (-Math.PI/4 + p * Math.PI * 1.5);
                     }
+                } else if (this.isRolling) {
+                    // Trzymanie rąk i miecza bliżej ciała podczas przewrotu
+                    handX = cx + dir * 15;
+                    handY = cy + 70;
+                    swordAngle = dir * (Math.PI / 2);
                 }
 
-                // Rysowanie rąk
                 ctx.beginPath();
                 ctx.moveTo(cx, armY); 
                 ctx.lineTo(handX, handY); 
                 ctx.stroke();
 
-                // Rysowanie miecza (jeśli nie jest oszołomiony)
                 if (!this.awaitingFatality) {
                     drawSword(ctx, handX, handY, swordAngle);
                 }
+
+                ctx.restore(); // Koniec obrotu
             }
 
             update() {
-                this.drawStickman();
                 if (this.shattered) return;
+                
+                // Mechanika Przewrotu (Dash / I-Frames)
+                if (this.isRolling) {
+                    this.rollProgress += 0.04; // Czas trwania animacji
+                    this.velocity.x = this.facingRight ? 8 : -8; // Szybkość dasha
+                    
+                    if (this.rollProgress >= 1) {
+                        this.isRolling = false;
+                        this.rollProgress = 0;
+                        this.velocity.x = 0;
+                    }
+                }
 
-                // Mechanika postępu animacji ataku (Animation Lock)
+                this.drawStickman();
+
                 if (this.isAttacking) {
                     this.attackProgress += this.attackSpeed;
                     if (this.attackProgress >= 1) {
@@ -469,23 +523,19 @@
                     this.velocity.y += gravity;
                 }
 
-                // Granice ekranu
                 if (this.position.x < 0) this.position.x = 0;
                 if (this.position.x + this.width > canvas.width) this.position.x = canvas.width - this.width;
             }
 
             attack(type) {
-                // Zabezpieczenie przed "spamowaniem" (Animation Lock)
-                if (this.isAttacking || this.awaitingFatality || this.shattered) return;
+                if (this.isAttacking || this.awaitingFatality || this.shattered || this.isRolling) return;
                 
                 playSound(sndAttack); 
                 this.isAttacking = true;
                 this.attackType = type;
                 this.attackProgress = 0;
-                this.attackDealtDamage = false; // Reset flagi trafienia
+                this.attackDealtDamage = false; 
                 this.attackBox.width = type === 1 ? 120 : 160;
-                
-                // Prędkość animacji: typ 1 szybszy, typ 2 wolniejszy
                 this.attackSpeed = type === 1 ? 0.08 : 0.04;
             }
 
@@ -497,7 +547,7 @@
             }
         }
 
-        const player = new Sprite({ position: { x: 200, y: 0 }, velocity: { x: 0, y: 0 }, color: '#1e88e5' });
+        const player = new Sprite({ position: { x: 200, y: 0 }, velocity: { x: 0, y: 0 }, color: '#4fc3f7' }); // Nieco jaśniejszy niebieski, żeby odbijał się od tła
         const enemy = new Sprite({ position: { x: 750, y: 0 }, velocity: { x: 0, y: 0 }, color: '#e53935', isEnemy: true });
 
         const keys = { a: { pressed: false }, d: { pressed: false }, w: { pressed: false }, space: { pressed: false } };
@@ -519,13 +569,13 @@
             
             if (player.health === enemy.health) {
                 res.innerHTML = 'REMIS';
-                res.style.color = '#333';
+                res.style.color = '#fff';
             } else if (player.health > enemy.health) {
                 res.innerHTML = isFatality ? 'FATALITY!<br><span style="font-size:32px;">GNIAZDO NOSTALGII WYGRYWA</span>' : 'GNIAZDO NOSTALGII WYGRYWA!';
-                res.style.color = isFatality ? '#b71c1c' : '#333';
+                res.style.color = isFatality ? '#e53935' : '#fff';
             } else {
                 res.innerHTML = isFatality ? 'FATALITY!<br><span style="font-size:32px;">PRZEGRAŁEŚ</span>' : 'PRZEGRAŁEŚ!';
-                res.style.color = isFatality ? '#b71c1c' : '#333';
+                res.style.color = isFatality ? '#e53935' : '#fff';
             }
             gameOver = true;
         }
@@ -536,6 +586,7 @@
             player.shattered = false; enemy.shattered = false;
             player.awaitingFatality = false; enemy.awaitingFatality = false;
             player.isAttacking = false; enemy.isAttacking = false;
+            player.isRolling = false; enemy.isRolling = false;
             player.velocity = {x: 0, y: 0}; enemy.velocity = {x: 0, y: 0};
             particles = [];
             
@@ -563,21 +614,20 @@
                 
                 if (victim.health <= 0) {
                     victim.awaitingFatality = true;
-                    // Przerwij aktualne ataki ofiary
                     victim.isAttacking = false; 
                     playSound(sndFinish);
                     
                     const res = document.getElementById('result');
                     res.style.display = 'block';
                     res.innerHTML = 'FINISH HIM!';
-                    res.style.color = '#b71c1c';
+                    res.style.color = '#e53935';
                 }
             }
         }
 
         function updateAI() {
             if (enemy.shattered || player.shattered || gameOver) {
-                enemy.velocity.x = 0;
+                if(!enemy.isRolling) enemy.velocity.x = 0;
                 return;
             }
             if (enemy.awaitingFatality) {
@@ -586,21 +636,33 @@
             }
 
             const distanceX = player.position.x - enemy.position.x;
-            enemy.facingRight = distanceX > 0;
+            
+            // Odwróć się tylko jeśli nie rolluje (nie można zmieniać kierunku w locie)
+            if (!enemy.isRolling) {
+                enemy.facingRight = distanceX > 0;
+            }
 
             if (!player.awaitingFatality) {
-                if (Math.abs(distanceX) > 120) enemy.velocity.x = distanceX > 0 ? 3 : -3;
-                else enemy.velocity.x = 0;
-                
-                if (Math.random() < 0.02 && enemy.velocity.y === 0) enemy.velocity.y = -15;
+                // Szansa na unik (Roll) gdy gracz atakuje
+                if (Math.abs(distanceX) < 180 && player.isAttacking && !enemy.isRolling && Math.random() < 0.05) {
+                    enemy.roll();
+                }
 
-                if (Math.abs(distanceX) < 140 && !enemy.isAttacking) {
-                    if (Math.random() < 0.05) enemy.attack(Math.random() > 0.5 ? 1 : 2);
+                // Ruch tylko gdy nie ma animacji wymuszającej pęd
+                if (!enemy.isRolling) {
+                    if (Math.abs(distanceX) > 120) enemy.velocity.x = distanceX > 0 ? 3 : -3;
+                    else enemy.velocity.x = 0;
+                    
+                    if (Math.random() < 0.02 && enemy.velocity.y === 0) enemy.velocity.y = -15;
+
+                    if (Math.abs(distanceX) < 140 && !enemy.isAttacking) {
+                        if (Math.random() < 0.05) enemy.attack(Math.random() > 0.5 ? 1 : 2);
+                    }
                 }
             } else {
-                enemy.velocity.x = 0;
+                if (!enemy.isRolling) enemy.velocity.x = 0;
                 if (Math.abs(distanceX) < 130 && Math.random() < 0.01) enemy.attack(2);
-                else if (Math.abs(distanceX) > 130) enemy.velocity.x = distanceX > 0 ? 3 : -3;
+                else if (Math.abs(distanceX) > 130 && !enemy.isRolling) enemy.velocity.x = distanceX > 0 ? 3 : -3;
             }
         }
 
@@ -614,40 +676,46 @@
             if (elapsed > fpsInterval) {
                 then = now - (elapsed % fpsInterval); 
 
-                ctx.fillStyle = '#e0e0e0'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-                ctx.fillStyle = '#9e9e9e'; ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+                // Rysowanie nowej pięknej areny
+                drawArena(ctx, canvas);
 
-                // Aktualizacja i usuwanie martwych iskier
                 particles = particles.filter(p => p.type !== 'spark' || p.life > 0);
                 particles.forEach(p => { p.update(); p.draw(); });
 
                 player.update();
                 enemy.update();
 
-                player.facingRight = player.position.x < enemy.position.x;
-                if (!enemy.isEnemy) enemy.facingRight = enemy.position.x < player.position.x;
+                if (!player.isRolling && !player.shattered) {
+                    player.facingRight = player.position.x < enemy.position.x;
+                }
+                if (!enemy.isEnemy && !enemy.isRolling && !enemy.shattered) {
+                    enemy.facingRight = enemy.position.x < player.position.x;
+                }
 
-                player.velocity.x = 0;
-                if (!player.awaitingFatality && !player.shattered) {
+                // Zablokuj sterowanie ruchem, gdy trwa roll lub oczekiwanie na fatality
+                if (!player.awaitingFatality && !player.shattered && !player.isRolling) {
+                    player.velocity.x = 0;
                     if (keys.a.pressed && player.lastKey === 'a') player.velocity.x = -5;
                     else if (keys.d.pressed && player.lastKey === 'd') player.velocity.x = 5;
                 }
 
                 updateAI();
 
-                // Sprawdzanie kolizji tylko podczas "aktywnych klatek" (środek animacji)
+                // Kolizje i I-FRAMES (Klatki Nieśmiertelności podczas rolla)
                 [ {attacker: player, victim: enemy}, {attacker: enemy, victim: player} ].forEach(pair => {
                     const a = pair.attacker;
                     const v = pair.victim;
                     
                     if (a.isAttacking && !a.attackDealtDamage && a.attackProgress > 0.3 && a.attackProgress < 0.7) {
                         if (rectangularCollision({ rectangle1: a, rectangle2: v })) {
-                            a.attackDealtDamage = true; // Zabezpieczenie przed wielokrotnym trafieniem
-                            
-                            // Efekt uderzenia
-                            if (!v.awaitingFatality) spawnImpact(v.position.x + v.width/2, v.position.y + 60);
-                            
-                            handleHit(a, v, a.attackType === 1 ? 5 : 15);
+                            // Jeśli ofiara robi unik, atak "przelatuje" (nie ignorujemy ataku w 100%, 
+                            // wciąż jest groźny, ale póki ofiara ma isRolling, nie zadaje mu ran).
+                            if (!v.isRolling) {
+                                a.attackDealtDamage = true; 
+                                
+                                if (!v.awaitingFatality) spawnImpact(v.position.x + v.width/2, v.position.y + 60);
+                                handleHit(a, v, a.attackType === 1 ? 5 : 15);
+                            }
                         }
                     }
                 });
@@ -662,7 +730,8 @@
                 case 'd': if (!player.awaitingFatality && !gameOver) { keys.d.pressed = true; player.lastKey = 'd'; } break;
                 case 'a': if (!player.awaitingFatality && !gameOver) { keys.a.pressed = true; player.lastKey = 'a'; } break;
                 case 'w':
-                case ' ': if (!player.awaitingFatality && !gameOver && player.velocity.y === 0) player.velocity.y = -15; break;
+                case ' ': if (!player.awaitingFatality && !gameOver && player.velocity.y === 0 && !player.isRolling) player.velocity.y = -15; break;
+                case 'j': if (!player.awaitingFatality && !gameOver) player.roll(); break;
                 case 'k': if (!player.awaitingFatality && !gameOver) player.attack(1); break;
                 case 'l': if (!player.awaitingFatality && !gameOver) player.attack(2); break;
             }
