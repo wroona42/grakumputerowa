@@ -63,6 +63,25 @@
             width: 100%;
             transition: width 0.15s ease-out;
         }
+        .estus-container {
+            display: flex;
+            gap: 8px;
+            margin-top: 8px;
+        }
+        .estus {
+            width: 18px;
+            height: 18px;
+            background: linear-gradient(135deg, #ffca28, #f57c00);
+            border: 2px solid #3e2723;
+            border-radius: 3px;
+            box-shadow: 0 0 8px rgba(255, 202, 40, 0.8);
+            transition: opacity 0.3s, filter 0.3s;
+        }
+        .estus.empty {
+            opacity: 0.3;
+            filter: grayscale(100%);
+            box-shadow: none;
+        }
         #result {
             position: absolute;
             top: 50%;
@@ -77,21 +96,23 @@
             text-align: center;
         }
         
+        /* Zmodyfikowana, wyraźniejsza legenda */
         #legend {
             margin-top: 20px;
-            background: #222;
-            padding: 15px 30px;
-            border-radius: 10px;
-            border: 2px solid #555;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.5);
+            background: rgba(20, 20, 20, 0.95);
+            padding: 15px 40px;
+            border-radius: 12px;
+            border: 3px solid #ffca28;
+            box-shadow: 0 8px 15px rgba(0,0,0,0.8), 0 0 15px rgba(255, 202, 40, 0.2);
             text-align: center;
         }
         #legend h3 {
-            margin: 0 0 10px 0;
+            margin: 0 0 12px 0;
             color: #ffca28;
-            font-size: 1.2rem;
+            font-size: 1.4rem;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 2px;
+            text-shadow: 1px 1px 2px #000;
         }
         .controls-grid {
             display: flex;
@@ -104,19 +125,21 @@
             display: flex;
             align-items: center;
             gap: 10px;
-            font-size: 14px;
+            font-size: 15px;
+            color: #e0e0e0;
+            font-weight: bold;
         }
         kbd {
-            background-color: #eee;
+            background-color: #fff;
             border-radius: 4px;
-            border: 1px solid #b4b4b4;
-            box-shadow: 0 2px 0 0 #b4b4b4, 0 3px 2px 0 rgba(0,0,0,0.4);
-            color: #333;
+            border: 1px solid #aaa;
+            box-shadow: 0 3px 0 0 #aaa, 0 4px 4px 0 rgba(0,0,0,0.5);
+            color: #111;
             display: inline-block;
             font-family: sans-serif;
-            font-size: 12px;
-            font-weight: 700;
-            padding: 4px 8px;
+            font-size: 14px;
+            font-weight: 800;
+            padding: 5px 10px;
             white-space: nowrap;
         }
     </style>
@@ -130,11 +153,17 @@
                 <div class="health-bar-bg">
                     <div id="playerHealth" class="health-bar-fill"></div>
                 </div>
+                <div id="playerEstus" class="estus-container">
+                    <div class="estus"></div><div class="estus"></div><div class="estus"></div>
+                </div>
             </div>
             <div class="player-info" style="align-items: flex-end;">
                 <div class="player-name">Przeciwnik</div>
                 <div class="health-bar-bg" style="display: flex; justify-content: flex-end;">
                     <div id="enemyHealth" class="health-bar-fill"></div>
+                </div>
+                <div id="enemyEstus" class="estus-container">
+                    <div class="estus"></div><div class="estus"></div><div class="estus"></div>
                 </div>
             </div>
         </div>
@@ -142,12 +171,14 @@
         <canvas id="gameCanvas" width="1024" height="576"></canvas>
     </div>
 
+    <!-- Wyraźniejsza Legenda -->
     <div id="legend">
         <h3>Legenda Sterowania</h3>
         <div class="controls-grid">
             <div class="control-item"><kbd>A</kbd> <kbd>D</kbd> Ruch</div>
             <div class="control-item"><kbd>W</kbd> / <kbd>Spacja</kbd> Skok</div>
-            <div class="control-item"><kbd>J</kbd> Przewrót (Unik)</div>
+            <div class="control-item"><kbd>J</kbd> Przewrót</div>
+            <div class="control-item"><kbd>I</kbd> Estus (Leczenie)</div>
             <div class="control-item"><kbd>K</kbd> Szybki Atak</div>
             <div class="control-item"><kbd>L</kbd> Mocny Atak</div>
             <div class="control-item"><kbd>R</kbd> Reset</div>
@@ -177,9 +208,19 @@
 
         let particles = [];
 
-        // --- RYSOWANIE ARENY ŚREDNIOWIECZNEJ ---
+        function updateEstusUI(sprite, containerId) {
+            const container = document.getElementById(containerId);
+            const flasks = container.getElementsByClassName('estus');
+            for (let i = 0; i < flasks.length; i++) {
+                if (i < sprite.estusCount) {
+                    flasks[i].classList.remove('empty');
+                } else {
+                    flasks[i].classList.add('empty');
+                }
+            }
+        }
+
         function drawArena(ctx, canvas) {
-            // Mroczne niebo
             let sky = ctx.createLinearGradient(0, 0, 0, canvas.height - 200);
             sky.addColorStop(0, '#0f0c29');
             sky.addColorStop(0.5, '#302b63');
@@ -187,7 +228,6 @@
             ctx.fillStyle = sky;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Krwawy księżyc / słońce
             ctx.fillStyle = '#e53935';
             ctx.beginPath();
             ctx.arc(canvas.width / 2, 200, 100, 0, Math.PI * 2);
@@ -197,13 +237,11 @@
             ctx.fill();
             ctx.shadowBlur = 0;
 
-            // Mur Koloseum w tle
-            ctx.fillStyle = '#1e2124'; // Ciemny kamień
+            ctx.fillStyle = '#1e2124'; 
             ctx.fillRect(0, canvas.height - 220, canvas.width, 170);
-            ctx.fillStyle = '#282b30'; // Gzyms
+            ctx.fillStyle = '#282b30'; 
             ctx.fillRect(0, canvas.height - 230, canvas.width, 10);
 
-            // Łuki w murze
             ctx.fillStyle = '#111';
             for (let i = 0; i < 9; i++) {
                 ctx.beginPath();
@@ -212,22 +250,20 @@
                 ctx.fill();
             }
 
-            // Czerwone sztandary
             ctx.fillStyle = '#7f0000';
             ctx.fillRect(200, canvas.height - 220, 50, 130);
             ctx.fillRect(canvas.width - 250, canvas.height - 220, 50, 130);
-            // Złote wykończenia sztandarów
+            
             ctx.fillStyle = '#ffb300';
             ctx.fillRect(200, canvas.height - 95, 50, 5);
             ctx.fillRect(canvas.width - 250, canvas.height - 95, 50, 5);
 
-            // Grunt (Ziemia)
             let ground = ctx.createLinearGradient(0, canvas.height - 50, 0, canvas.height);
-            ground.addColorStop(0, '#2c1e16'); // Ciemna ziemia
+            ground.addColorStop(0, '#2c1e16'); 
             ground.addColorStop(1, '#140c08');
             ctx.fillStyle = ground;
             ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
-            // Krawędź ziemi
+            
             ctx.fillStyle = '#111';
             ctx.fillRect(0, canvas.height - 52, canvas.width, 2);
         }
@@ -242,7 +278,6 @@
             ctx.shadowOffsetX = 3;
             ctx.shadowOffsetY = 3;
 
-            // Ostrze
             ctx.fillStyle = '#cfd8dc'; 
             ctx.strokeStyle = '#78909c'; 
             ctx.lineWidth = 2;
@@ -253,14 +288,12 @@
             ctx.closePath();
             ctx.fill(); ctx.stroke();
 
-            // Zbrocze
             ctx.strokeStyle = '#90a4ae';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(0, -5); ctx.lineTo(0, -65);
             ctx.stroke();
 
-            // Jelec
             ctx.fillStyle = '#ffb300'; 
             ctx.strokeStyle = '#b08d00';
             ctx.lineWidth = 2;
@@ -270,13 +303,11 @@
             ctx.closePath();
             ctx.fill(); ctx.stroke();
 
-            // Rękojeść
             ctx.fillStyle = '#5d4037'; 
             ctx.strokeStyle = '#3e2723';
             ctx.beginPath(); ctx.rect(-3, 4, 6, 16);
             ctx.fill(); ctx.stroke();
 
-            // Głowica
             ctx.fillStyle = '#ffb300';
             ctx.beginPath(); ctx.arc(0, 23, 5, 0, Math.PI * 2);
             ctx.fill(); ctx.stroke();
@@ -306,6 +337,10 @@
                     this.maxLife = Math.random() * 15 + 10;
                     this.life = this.maxLife;
                     this.size = Math.random() * 4 + 2;
+                } else if (type === 'heal') {
+                    this.maxLife = Math.random() * 20 + 20;
+                    this.life = this.maxLife;
+                    this.size = Math.random() * 4 + 2;
                 }
             }
 
@@ -313,6 +348,9 @@
                 this.x += this.vx; this.y += this.vy;
                 if (this.type === 'spark') {
                     this.life--; this.vy += gravity * 0.5; this.size *= 0.93;
+                } else if (this.type === 'heal') {
+                    this.life--; 
+                    this.size *= 0.96; // Maleje z czasem
                 } else if (this.y < canvas.height - 50) {
                     this.vy += gravity; this.rotation += this.rotSpeed;
                 } else {
@@ -328,9 +366,14 @@
                 if (this.type === 'blood') {
                     ctx.fillStyle = this.color;
                     ctx.beginPath(); ctx.arc(0, 0, this.size, 0, Math.PI * 2); ctx.fill();
-                } else if (this.type === 'spark') {
+                } else if (this.type === 'spark' || this.type === 'heal') {
                     ctx.fillStyle = this.color;
                     ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
+                    // Dla leczenia dodaj poświatę
+                    if (this.type === 'heal') {
+                        ctx.shadowColor = '#00e676';
+                        ctx.shadowBlur = 10;
+                    }
                     ctx.beginPath(); ctx.arc(0, 0, this.size, 0, Math.PI * 2); ctx.fill();
                     ctx.globalAlpha = 1.0;
                 } else {
@@ -365,9 +408,12 @@
                 this.attackSpeed = 0; 
                 this.attackDealtDamage = false; 
 
-                // Dodane zmienne do Przewrotu (Rolla)
                 this.isRolling = false;
                 this.rollProgress = 0;
+                
+                // Zmienne leczenia Estusem
+                this.estusCount = 3;
+                this.isHealing = false;
 
                 this.health = 100;
                 this.isEnemy = isEnemy;
@@ -377,10 +423,40 @@
             }
 
             roll() {
-                // Nie można rollować podczas ataku, śmierci lub gdy już się rolluje
-                if (this.isAttacking || this.isRolling || this.awaitingFatality || this.shattered) return;
+                if (this.isAttacking || this.isRolling || this.isHealing || this.awaitingFatality || this.shattered) return;
                 this.isRolling = true;
                 this.rollProgress = 0;
+            }
+
+            heal() {
+                // Warunki do leczenia: masz Estusy, nie masz pełnego HP, nie jesteś w trakcie innej akcji
+                if (this.estusCount > 0 && this.health < 100 && !this.isHealing && !this.isAttacking && !this.isRolling && !this.awaitingFatality && !this.shattered) {
+                    this.estusCount--;
+                    this.isHealing = true;
+                    this.velocity.x = 0; // Zatrzymuje się podczas picia
+                    
+                    this.health = Math.min(100, this.health + 40);
+
+                    // Efekt wizualny leczenia (zielone cząsteczki)
+                    const cx = this.position.x + this.width / 2;
+                    for (let i = 0; i < 20; i++) {
+                        particles.push(new Particle(
+                            cx + (Math.random() - 0.5) * 40,
+                            this.position.y + this.height - Math.random() * 80,
+                            (Math.random() - 0.5) * 2,
+                            -Math.random() * 4 - 2, // Leci do góry
+                            'heal', '#00e676'
+                        ));
+                    }
+
+                    // Czas trwania animacji (chwilowa bezbronność)
+                    setTimeout(() => {
+                        this.isHealing = false;
+                    }, 600);
+                    
+                    return true; 
+                }
+                return false;
             }
 
             shatter() {
@@ -407,17 +483,22 @@
             drawStickman() {
                 if (this.shattered) return; 
 
-                ctx.save(); // Zapisujemy stan canvasa by móc obracać postać
+                ctx.save(); 
                 
                 const cx = this.position.x + this.width / 2;
                 const cy = this.position.y;
                 const dir = this.facingRight ? 1 : -1;
 
-                // Obrót postaci podczas przewrotu
+                // Zielona poświata podczas leczenia
+                if (this.isHealing) {
+                    ctx.shadowColor = '#00e676';
+                    ctx.shadowBlur = 15;
+                }
+
                 if (this.isRolling) {
                     const pivotY = cy + this.height / 2;
                     ctx.translate(cx, pivotY);
-                    ctx.rotate(dir * this.rollProgress * Math.PI * 2); // Pełen obrót (360 stopni)
+                    ctx.rotate(dir * this.rollProgress * Math.PI * 2);
                     ctx.translate(-cx, -pivotY);
                 }
 
@@ -439,7 +520,6 @@
 
                 ctx.beginPath(); ctx.moveTo(cx, cy + 35); ctx.lineTo(cx, cy + 90); ctx.stroke();
                 
-                // Nogi (lekko ugięte podczas rolla)
                 let crouch = this.isRolling ? -20 : 0;
                 ctx.beginPath();
                 ctx.moveTo(cx, cy + 90); ctx.lineTo(cx - 15, cy + 140 + crouch); 
@@ -463,10 +543,14 @@
                         swordAngle = dir * (-Math.PI/4 + p * Math.PI * 1.5);
                     }
                 } else if (this.isRolling) {
-                    // Trzymanie rąk i miecza bliżej ciała podczas przewrotu
                     handX = cx + dir * 15;
                     handY = cy + 70;
                     swordAngle = dir * (Math.PI / 2);
+                } else if (this.isHealing) {
+                    // Animacja trzymania butelki (ręka do góry)
+                    handX = cx + dir * 10;
+                    handY = cy + 20;
+                    swordAngle = dir * (Math.PI / 4);
                 }
 
                 ctx.beginPath();
@@ -478,16 +562,15 @@
                     drawSword(ctx, handX, handY, swordAngle);
                 }
 
-                ctx.restore(); // Koniec obrotu
+                ctx.restore(); 
             }
 
             update() {
                 if (this.shattered) return;
                 
-                // Mechanika Przewrotu (Dash / I-Frames)
                 if (this.isRolling) {
-                    this.rollProgress += 0.04; // Czas trwania animacji
-                    this.velocity.x = this.facingRight ? 8 : -8; // Szybkość dasha
+                    this.rollProgress += 0.04;
+                    this.velocity.x = this.facingRight ? 8 : -8;
                     
                     if (this.rollProgress >= 1) {
                         this.isRolling = false;
@@ -528,7 +611,7 @@
             }
 
             attack(type) {
-                if (this.isAttacking || this.awaitingFatality || this.shattered || this.isRolling) return;
+                if (this.isAttacking || this.awaitingFatality || this.shattered || this.isRolling || this.isHealing) return;
                 
                 playSound(sndAttack); 
                 this.isAttacking = true;
@@ -547,7 +630,7 @@
             }
         }
 
-        const player = new Sprite({ position: { x: 200, y: 0 }, velocity: { x: 0, y: 0 }, color: '#4fc3f7' }); // Nieco jaśniejszy niebieski, żeby odbijał się od tła
+        const player = new Sprite({ position: { x: 200, y: 0 }, velocity: { x: 0, y: 0 }, color: '#4fc3f7' }); 
         const enemy = new Sprite({ position: { x: 750, y: 0 }, velocity: { x: 0, y: 0 }, color: '#e53935', isEnemy: true });
 
         const keys = { a: { pressed: false }, d: { pressed: false }, w: { pressed: false }, space: { pressed: false } };
@@ -582,16 +665,20 @@
 
         function resetGame() {
             player.health = 100; enemy.health = 100;
+            player.estusCount = 3; enemy.estusCount = 3;
             player.position = { x: 200, y: 0 }; enemy.position = { x: 750, y: 0 };
             player.shattered = false; enemy.shattered = false;
             player.awaitingFatality = false; enemy.awaitingFatality = false;
             player.isAttacking = false; enemy.isAttacking = false;
             player.isRolling = false; enemy.isRolling = false;
+            player.isHealing = false; enemy.isHealing = false;
             player.velocity = {x: 0, y: 0}; enemy.velocity = {x: 0, y: 0};
             particles = [];
             
             document.getElementById('playerHealth').style.width = '100%';
             document.getElementById('enemyHealth').style.width = '100%';
+            updateEstusUI(player, 'playerEstus');
+            updateEstusUI(enemy, 'enemyEstus');
             document.getElementById('result').style.display = 'none';
             
             if (gameOver) {
@@ -615,6 +702,7 @@
                 if (victim.health <= 0) {
                     victim.awaitingFatality = true;
                     victim.isAttacking = false; 
+                    victim.isHealing = false; 
                     playSound(sndFinish);
                     
                     const res = document.getElementById('result');
@@ -627,28 +715,37 @@
 
         function updateAI() {
             if (enemy.shattered || player.shattered || gameOver) {
-                if(!enemy.isRolling) enemy.velocity.x = 0;
+                if(!enemy.isRolling && !enemy.isHealing) enemy.velocity.x = 0;
                 return;
             }
-            if (enemy.awaitingFatality) {
+            if (enemy.awaitingFatality || enemy.isHealing) {
                 enemy.velocity.x = 0; 
                 return;
             }
 
             const distanceX = player.position.x - enemy.position.x;
             
-            // Odwróć się tylko jeśli nie rolluje (nie można zmieniać kierunku w locie)
             if (!enemy.isRolling) {
                 enemy.facingRight = distanceX > 0;
             }
 
             if (!player.awaitingFatality) {
-                // Szansa na unik (Roll) gdy gracz atakuje
+                
+                // Decyzja o leczeniu (jeśli ma mało HP, Estusy i nie jest atakowany w tej sekundzie)
+                if (enemy.health <= 40 && enemy.estusCount > 0 && Math.abs(distanceX) > 100) {
+                    if (Math.random() < 0.02) { // 2% szansy co klatkę na odpalenie poty
+                        if (enemy.heal()) {
+                            updateEstusUI(enemy, 'enemyEstus');
+                            document.getElementById('enemyHealth').style.width = enemy.health + '%';
+                            return; // Uciekamy z funkcji by nie nadpisywać ruchu
+                        }
+                    }
+                }
+
                 if (Math.abs(distanceX) < 180 && player.isAttacking && !enemy.isRolling && Math.random() < 0.05) {
                     enemy.roll();
                 }
 
-                // Ruch tylko gdy nie ma animacji wymuszającej pęd
                 if (!enemy.isRolling) {
                     if (Math.abs(distanceX) > 120) enemy.velocity.x = distanceX > 0 ? 3 : -3;
                     else enemy.velocity.x = 0;
@@ -676,24 +773,23 @@
             if (elapsed > fpsInterval) {
                 then = now - (elapsed % fpsInterval); 
 
-                // Rysowanie nowej pięknej areny
                 drawArena(ctx, canvas);
 
-                particles = particles.filter(p => p.type !== 'spark' || p.life > 0);
+                particles = particles.filter(p => (p.type !== 'spark' && p.type !== 'heal') || p.life > 0);
                 particles.forEach(p => { p.update(); p.draw(); });
 
                 player.update();
                 enemy.update();
 
-                if (!player.isRolling && !player.shattered) {
+                if (!player.isRolling && !player.shattered && !player.isHealing) {
                     player.facingRight = player.position.x < enemy.position.x;
                 }
-                if (!enemy.isEnemy && !enemy.isRolling && !enemy.shattered) {
+                if (!enemy.isEnemy && !enemy.isRolling && !enemy.shattered && !enemy.isHealing) {
                     enemy.facingRight = enemy.position.x < player.position.x;
                 }
 
-                // Zablokuj sterowanie ruchem, gdy trwa roll lub oczekiwanie na fatality
-                if (!player.awaitingFatality && !player.shattered && !player.isRolling) {
+                // Zablokuj sterowanie ruchem, gdy trwa roll, leczenie lub oczekiwanie na fatality
+                if (!player.awaitingFatality && !player.shattered && !player.isRolling && !player.isHealing) {
                     player.velocity.x = 0;
                     if (keys.a.pressed && player.lastKey === 'a') player.velocity.x = -5;
                     else if (keys.d.pressed && player.lastKey === 'd') player.velocity.x = 5;
@@ -701,15 +797,13 @@
 
                 updateAI();
 
-                // Kolizje i I-FRAMES (Klatki Nieśmiertelności podczas rolla)
+                // Kolizje i I-FRAMES
                 [ {attacker: player, victim: enemy}, {attacker: enemy, victim: player} ].forEach(pair => {
                     const a = pair.attacker;
                     const v = pair.victim;
                     
                     if (a.isAttacking && !a.attackDealtDamage && a.attackProgress > 0.3 && a.attackProgress < 0.7) {
                         if (rectangularCollision({ rectangle1: a, rectangle2: v })) {
-                            // Jeśli ofiara robi unik, atak "przelatuje" (nie ignorujemy ataku w 100%, 
-                            // wciąż jest groźny, ale póki ofiara ma isRolling, nie zadaje mu ran).
                             if (!v.isRolling) {
                                 a.attackDealtDamage = true; 
                                 
@@ -727,11 +821,19 @@
         window.addEventListener('keydown', (event) => {
             switch (event.key.toLowerCase()) {
                 case 'r': resetGame(); break;
-                case 'd': if (!player.awaitingFatality && !gameOver) { keys.d.pressed = true; player.lastKey = 'd'; } break;
-                case 'a': if (!player.awaitingFatality && !gameOver) { keys.a.pressed = true; player.lastKey = 'a'; } break;
+                case 'd': if (!player.awaitingFatality && !gameOver && !player.isHealing) { keys.d.pressed = true; player.lastKey = 'd'; } break;
+                case 'a': if (!player.awaitingFatality && !gameOver && !player.isHealing) { keys.a.pressed = true; player.lastKey = 'a'; } break;
                 case 'w':
-                case ' ': if (!player.awaitingFatality && !gameOver && player.velocity.y === 0 && !player.isRolling) player.velocity.y = -15; break;
+                case ' ': if (!player.awaitingFatality && !gameOver && player.velocity.y === 0 && !player.isRolling && !player.isHealing) player.velocity.y = -15; break;
                 case 'j': if (!player.awaitingFatality && !gameOver) player.roll(); break;
+                case 'i': 
+                    if (!player.awaitingFatality && !gameOver) {
+                        if (player.heal()) {
+                            updateEstusUI(player, 'playerEstus');
+                            document.getElementById('playerHealth').style.width = player.health + '%';
+                        }
+                    }
+                    break;
                 case 'k': if (!player.awaitingFatality && !gameOver) player.attack(1); break;
                 case 'l': if (!player.awaitingFatality && !gameOver) player.attack(2); break;
             }
