@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gniazdo Nostalgii vs Przeciwnik</title>
+    <title>Wrzód vs Gniazdo Nostalgii</title>
     <style>
         body {
             margin: 0;
@@ -148,7 +148,7 @@
     <div id="game-container">
         <div id="ui">
             <div class="player-info">
-                <div class="player-name">Gniazdo Nostalgii</div>
+                <div class="player-name">Wrzód</div>
                 <div class="health-bar-bg">
                     <div id="playerHealth" class="health-bar-fill"></div>
                 </div>
@@ -157,7 +157,7 @@
                 </div>
             </div>
             <div class="player-info" style="align-items: flex-end;">
-                <div class="player-name">Przeciwnik</div>
+                <div class="player-name">Gniazdo Nostalgii</div>
                 <div class="health-bar-bg" style="display: flex; justify-content: flex-end;">
                     <div id="enemyHealth" class="health-bar-fill"></div>
                 </div>
@@ -314,9 +314,9 @@
         }
 
         function spawnImpact(x, y) {
-            for (let i = 0; i < 15; i++) {
+            for (let i = 0; i < 20; i++) {
                 particles.push(new Particle(
-                    x + (Math.random() - 0.5) * 20, y + (Math.random() - 0.5) * 20,
+                    x + (Math.random() - 0.5) * 30, y + (Math.random() - 0.5) * 30,
                     (Math.random() - 0.5) * 15, (Math.random() - 0.5) * 15,
                     'spark', '#ffea00'
                 ));
@@ -400,7 +400,7 @@
                 this.color = color;
                 
                 this.isAttacking = false;
-                this.attackType = 0;
+                this.attackType = 0; // 1-Szybki, 2-Mocny, 3-Tornado, 4-Wstrząs
                 this.attackProgress = 0; 
                 this.attackSpeed = 0; 
                 this.attackDealtDamage = false; 
@@ -411,7 +411,6 @@
                 this.estusCount = 3;
                 this.isHealing = false;
 
-                // Animacje proceduralne
                 this.idleProgress = Math.random() * 10; 
                 this.walkProgress = 0;
 
@@ -491,10 +490,18 @@
                     ctx.shadowBlur = 15;
                 }
 
+                // Rotacja całego ciała (Rolle oraz Atak Specjalny nr 3)
+                let rotAngle = 0;
                 if (this.isRolling) {
+                    rotAngle = dir * this.rollProgress * Math.PI * 2;
+                } else if (this.isAttacking && this.attackType === 3) {
+                    rotAngle = dir * this.attackProgress * Math.PI * 4; // Obrót o 720 stopni
+                }
+
+                if (rotAngle !== 0) {
                     const pivotY = cy + this.height / 2;
                     ctx.translate(cx, pivotY);
-                    ctx.rotate(dir * this.rollProgress * Math.PI * 2);
+                    ctx.rotate(rotAngle);
                     ctx.translate(-cx, -pivotY);
                 }
 
@@ -503,7 +510,6 @@
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
 
-                // --- Zmienne Animacyjne (Idle / Walk / Jump) ---
                 let bob = 0;
                 let foot1X = cx - 15, foot1Y = cy + 140;
                 let foot2X = cx + 15, foot2Y = cy + 140;
@@ -512,7 +518,7 @@
                 let isMoving = Math.abs(this.velocity.x) > 0.1 && this.velocity.y === 0;
                 let isJumping = this.velocity.y !== 0;
 
-                if (!this.isRolling && !this.awaitingFatality) {
+                if (!this.isRolling && !this.awaitingFatality && this.attackType !== 3) {
                     if (isMoving) {
                         bob = -Math.abs(Math.sin(this.walkProgress)) * 5;
                         foot1X = cx + Math.sin(this.walkProgress) * 25;
@@ -520,21 +526,18 @@
                         foot2X = cx + Math.sin(this.walkProgress + Math.PI) * 25;
                         foot2Y = cy + 140 - Math.max(0, Math.sin(this.walkProgress + Math.PI) * 15);
                     } else if (!isJumping) {
-                        bob = Math.sin(this.idleProgress) * 3; // Oddech
+                        bob = Math.sin(this.idleProgress) * 3; 
                     } else {
-                        // Skok - podkulone nogi
                         foot1X = cx - 10; foot1Y = cy + 115;
                         foot2X = cx + 20; foot2Y = cy + 125;
                     }
-                } else if (this.isRolling) {
+                } else if (this.isRolling || this.attackType === 3) {
                     pelvisY += 20;
                     foot1Y -= 20; foot2Y -= 20;
                 }
 
-                // Górna część ciała reaguje na bobbing
                 const upperY = cy + bob;
 
-                // Rysowanie Głowy
                 if (this.isEnemy && enemyFace.complete) {
                     ctx.drawImage(enemyFace, cx - 30, upperY - 10, 60, 60);
                 } else {
@@ -545,7 +548,6 @@
 
                 let dropArm = this.awaitingFatality ? 30 : 0;
 
-                // Rysowanie Tułowia i Nóg
                 ctx.beginPath(); 
                 ctx.moveTo(cx, upperY + 35); ctx.lineTo(cx, pelvisY); 
                 ctx.stroke();
@@ -555,22 +557,35 @@
                 ctx.moveTo(cx, pelvisY); ctx.lineTo(foot2X, foot2Y); 
                 ctx.stroke();
 
-                // Rysowanie Ramion i Miecza
-                const armBaseY = upperY + 35; // Bary
+                const armBaseY = upperY + 35; 
                 let handX = cx + dir * 30;
                 let handY = upperY + 25;
                 let swordAngle = dir * (Math.PI / 4);
                 
                 if (this.isAttacking && !this.awaitingFatality && !this.isRolling) {
                     const p = this.attackProgress;
-                    if (this.attackType === 1) {
+                    if (this.attackType === 1) { // Szybki
                         handX = cx + dir * (30 + Math.sin(p * Math.PI) * 50);
                         handY = upperY + 15;
                         swordAngle = dir * (Math.PI / 2);
-                    } else if (this.attackType === 2) {
+                    } else if (this.attackType === 2) { // Mocny
                         handX = cx + dir * (30 + Math.sin(p * Math.PI) * 40);
                         handY = upperY + 25 - Math.sin(p * Math.PI) * 30;
                         swordAngle = dir * (-Math.PI/4 + p * Math.PI * 1.5);
+                    } else if (this.attackType === 3) { // Cięcie obrotowe po wyskoku (Tornado)
+                        handX = cx + dir * 50;
+                        handY = upperY + 10;
+                        swordAngle = dir * (Math.PI / 2); // Trzymany w bok podczas rotacji
+                    } else if (this.attackType === 4) { // Uderzenie z Powietrza (Slam)
+                        if (p < 0.6) {
+                            handX = cx - dir * 20;
+                            handY = upperY - 40;
+                            swordAngle = dir * (-Math.PI / 1.5);
+                        } else {
+                            handX = cx + dir * 40;
+                            handY = upperY + 80;
+                            swordAngle = dir * (Math.PI / 1.2);
+                        }
                     }
                 } else if (this.isRolling) {
                     handX = cx + dir * 15;
@@ -581,11 +596,9 @@
                     handY = upperY - 15;
                     swordAngle = dir * (Math.PI / 4);
                 } else if (isMoving && !this.awaitingFatality) {
-                    // Ramiona pracują naprzemiennie w biegu
                     handX = cx + dir * 20 + Math.sin(this.walkProgress + Math.PI) * 15;
                     handY = upperY + 30;
                 } else if (!isJumping && !this.awaitingFatality) {
-                    // Ramiona oddychają razem z tułowiem
                     handY = upperY + 25 + Math.sin(this.idleProgress) * 2;
                 }
 
@@ -606,7 +619,6 @@
             update() {
                 if (this.shattered) return;
 
-                // Postęp animacji proceduralnych
                 this.idleProgress += 0.05;
                 if (Math.abs(this.velocity.x) > 0.1 && this.velocity.y === 0 && !this.isRolling) {
                     this.walkProgress += 0.2;
@@ -635,10 +647,6 @@
                     }
                 }
 
-                if (this.awaitingFatality) {
-                    this.position.x += Math.sin(Date.now() / 150) * 1.5;
-                }
-
                 this.attackBox.position.x = this.facingRight ? this.position.x + this.width / 2 : this.position.x + this.width / 2 - this.attackBox.width;
                 this.attackBox.position.y = this.position.y + 30;
 
@@ -664,8 +672,23 @@
                 this.attackType = type;
                 this.attackProgress = 0;
                 this.attackDealtDamage = false; 
-                this.attackBox.width = type === 1 ? 120 : 160;
-                this.attackSpeed = type === 1 ? 0.08 : 0.04;
+
+                // Parametryzacja Ataków
+                if (type === 1) {
+                    this.attackBox.width = 120; this.attackSpeed = 0.08;
+                } else if (type === 2) {
+                    this.attackBox.width = 160; this.attackSpeed = 0.04;
+                } else if (type === 3) { // Atak Specjalny AI - Tornado
+                    this.attackBox.width = 180; 
+                    this.attackSpeed = 0.025; 
+                    this.velocity.y = -12; 
+                    this.velocity.x = this.facingRight ? 8 : -8; 
+                } else if (type === 4) { // Atak Specjalny AI - Slam w Ziemię
+                    this.attackBox.width = 200; 
+                    this.attackSpeed = 0.02; 
+                    this.velocity.y = -18; 
+                    this.velocity.x = this.facingRight ? 5 : -5;
+                }
             }
 
             takeHit(damage) {
@@ -700,10 +723,10 @@
                 res.innerHTML = 'REMIS';
                 res.style.color = '#fff';
             } else if (player.health > enemy.health) {
-                res.innerHTML = isFatality ? 'FATALITY!<br><span style="font-size:32px;">GNIAZDO NOSTALGII WYGRYWA</span>' : 'GNIAZDO NOSTALGII WYGRYWA!';
+                res.innerHTML = isFatality ? 'FATALITY!<br><span style="font-size:32px;">WRZÓD WYGRYWA</span>' : 'WRZÓD WYGRYWA!';
                 res.style.color = isFatality ? '#e53935' : '#fff';
             } else {
-                res.innerHTML = isFatality ? 'FATALITY!<br><span style="font-size:32px;">PRZEGRAŁEŚ</span>' : 'PRZEGRAŁEŚ!';
+                res.innerHTML = isFatality ? 'FATALITY!<br><span style="font-size:32px;">GNIAZDO NOSTALGII WYGRYWA</span>' : 'GNIAZDO NOSTALGII WYGRYWA!';
                 res.style.color = isFatality ? '#e53935' : '#fff';
             }
             gameOver = true;
@@ -761,7 +784,9 @@
 
         function updateAI() {
             if (enemy.shattered || player.shattered || gameOver) {
-                if(!enemy.isRolling && !enemy.isHealing) enemy.velocity.x = 0;
+                if(!enemy.isRolling && !enemy.isHealing && !(enemy.isAttacking && (enemy.attackType === 3 || enemy.attackType === 4))) {
+                    enemy.velocity.x = 0;
+                }
                 return;
             }
             if (enemy.awaitingFatality || enemy.isHealing) {
@@ -791,14 +816,32 @@
                     enemy.roll();
                 }
 
-                if (!enemy.isRolling) {
+                // AI Ruch i ataki
+                if (!enemy.isRolling && !(enemy.isAttacking && (enemy.attackType === 3 || enemy.attackType === 4))) {
+                    
                     if (Math.abs(distanceX) > 120) enemy.velocity.x = distanceX > 0 ? 3 : -3;
                     else enemy.velocity.x = 0;
                     
                     if (Math.random() < 0.02 && enemy.velocity.y === 0) enemy.velocity.y = -15;
 
-                    if (Math.abs(distanceX) < 140 && !enemy.isAttacking) {
-                        if (Math.random() < 0.05) enemy.attack(Math.random() > 0.5 ? 1 : 2);
+                    // Szansa na ataki
+                    if (Math.abs(distanceX) < 250 && !enemy.isAttacking) {
+                        if (Math.random() < 0.03) { // 3% na wejście w tryb ataku na klatkę (jeśli blisko)
+                            let rand = Math.random();
+                            
+                            // 10% szansy na atak specjalny 3 (Tornado) kiedy jest w dobrym zasięgu
+                            if (rand < 0.1 && Math.abs(distanceX) > 100) {
+                                enemy.attack(3);
+                            } 
+                            // 10% szansy na atak specjalny 4 (Ground Slam)
+                            else if (rand > 0.1 && rand < 0.2 && Math.abs(distanceX) > 50) {
+                                enemy.attack(4);
+                            } 
+                            // Standardowe ataki
+                            else if (Math.abs(distanceX) < 140) {
+                                enemy.attack(rand > 0.6 ? 1 : 2);
+                            }
+                        }
                     }
                 }
             } else {
@@ -833,10 +876,13 @@
                     enemy.facingRight = enemy.position.x < player.position.x;
                 }
 
+                // Ruch gracza (zablokowany gdy używa skilli mobilnych/specjalnych)
                 if (!player.awaitingFatality && !player.shattered && !player.isRolling && !player.isHealing) {
-                    player.velocity.x = 0;
-                    if (keys.a.pressed && player.lastKey === 'a') player.velocity.x = -5;
-                    else if (keys.d.pressed && player.lastKey === 'd') player.velocity.x = 5;
+                    if (!(player.isAttacking && (player.attackType === 3 || player.attackType === 4))) {
+                        player.velocity.x = 0;
+                        if (keys.a.pressed && player.lastKey === 'a') player.velocity.x = -5;
+                        else if (keys.d.pressed && player.lastKey === 'd') player.velocity.x = 5;
+                    }
                 }
 
                 updateAI();
@@ -845,13 +891,31 @@
                     const a = pair.attacker;
                     const v = pair.victim;
                     
-                    if (a.isAttacking && !a.attackDealtDamage && a.attackProgress > 0.3 && a.attackProgress < 0.7) {
+                    let canHit = false;
+                    if (a.attackType === 1 || a.attackType === 2) {
+                        canHit = a.attackProgress > 0.3 && a.attackProgress < 0.7; // Środek animacji
+                    } else if (a.attackType === 3) {
+                        canHit = a.attackProgress > 0.2 && a.attackProgress < 0.8; // Wiruje - duże okno trafienia
+                    } else if (a.attackType === 4) {
+                        canHit = a.attackProgress > 0.5 && a.attackProgress < 0.8; // Opadnięcie na ziemię
+                    }
+
+                    if (a.isAttacking && !a.attackDealtDamage && canHit) {
                         if (rectangularCollision({ rectangle1: a, rectangle2: v })) {
                             if (!v.isRolling) {
                                 a.attackDealtDamage = true; 
                                 
+                                let dmg = 15;
+                                if (a.attackType === 1) dmg = 5;
+                                else if (a.attackType === 2) dmg = 15;
+                                else if (a.attackType === 3) dmg = 20; // Silny atak rotacyjny
+                                else if (a.attackType === 4) {
+                                    dmg = 25; // Ogromne obrażenia
+                                    spawnImpact(a.position.x, canvas.height - 50); // Ekstra efekt na ziemi
+                                }
+
                                 if (!v.awaitingFatality) spawnImpact(v.position.x + v.width/2, v.position.y + 60);
-                                handleHit(a, v, a.attackType === 1 ? 5 : 15);
+                                handleHit(a, v, dmg);
                             }
                         }
                     }
