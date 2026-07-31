@@ -96,7 +96,6 @@
             text-align: center;
         }
         
-        /* Zmodyfikowana, wyraźniejsza legenda */
         #legend {
             margin-top: 20px;
             background: rgba(20, 20, 20, 0.95);
@@ -171,14 +170,13 @@
         <canvas id="gameCanvas" width="1024" height="576"></canvas>
     </div>
 
-    <!-- Wyraźniejsza Legenda -->
     <div id="legend">
         <h3>Legenda Sterowania</h3>
         <div class="controls-grid">
             <div class="control-item"><kbd>A</kbd> <kbd>D</kbd> Ruch</div>
             <div class="control-item"><kbd>W</kbd> / <kbd>Spacja</kbd> Skok</div>
             <div class="control-item"><kbd>J</kbd> Przewrót</div>
-            <div class="control-item"><kbd>I</kbd> Estus (Leczenie)</div>
+            <div class="control-item"><kbd>I</kbd> Estus</div>
             <div class="control-item"><kbd>K</kbd> Szybki Atak</div>
             <div class="control-item"><kbd>L</kbd> Mocny Atak</div>
             <div class="control-item"><kbd>R</kbd> Reset</div>
@@ -350,7 +348,7 @@
                     this.life--; this.vy += gravity * 0.5; this.size *= 0.93;
                 } else if (this.type === 'heal') {
                     this.life--; 
-                    this.size *= 0.96; // Maleje z czasem
+                    this.size *= 0.96; 
                 } else if (this.y < canvas.height - 50) {
                     this.vy += gravity; this.rotation += this.rotSpeed;
                 } else {
@@ -369,7 +367,6 @@
                 } else if (this.type === 'spark' || this.type === 'heal') {
                     ctx.fillStyle = this.color;
                     ctx.globalAlpha = Math.max(0, this.life / this.maxLife);
-                    // Dla leczenia dodaj poświatę
                     if (this.type === 'heal') {
                         ctx.shadowColor = '#00e676';
                         ctx.shadowBlur = 10;
@@ -411,9 +408,12 @@
                 this.isRolling = false;
                 this.rollProgress = 0;
                 
-                // Zmienne leczenia Estusem
                 this.estusCount = 3;
                 this.isHealing = false;
+
+                // Animacje proceduralne
+                this.idleProgress = Math.random() * 10; 
+                this.walkProgress = 0;
 
                 this.health = 100;
                 this.isEnemy = isEnemy;
@@ -429,27 +429,24 @@
             }
 
             heal() {
-                // Warunki do leczenia: masz Estusy, nie masz pełnego HP, nie jesteś w trakcie innej akcji
                 if (this.estusCount > 0 && this.health < 100 && !this.isHealing && !this.isAttacking && !this.isRolling && !this.awaitingFatality && !this.shattered) {
                     this.estusCount--;
                     this.isHealing = true;
-                    this.velocity.x = 0; // Zatrzymuje się podczas picia
+                    this.velocity.x = 0; 
                     
                     this.health = Math.min(100, this.health + 40);
 
-                    // Efekt wizualny leczenia (zielone cząsteczki)
                     const cx = this.position.x + this.width / 2;
                     for (let i = 0; i < 20; i++) {
                         particles.push(new Particle(
                             cx + (Math.random() - 0.5) * 40,
                             this.position.y + this.height - Math.random() * 80,
                             (Math.random() - 0.5) * 2,
-                            -Math.random() * 4 - 2, // Leci do góry
+                            -Math.random() * 4 - 2, 
                             'heal', '#00e676'
                         ));
                     }
 
-                    // Czas trwania animacji (chwilowa bezbronność)
                     setTimeout(() => {
                         this.isHealing = false;
                     }, 600);
@@ -489,7 +486,6 @@
                 const cy = this.position.y;
                 const dir = this.facingRight ? 1 : -1;
 
-                // Zielona poświata podczas leczenia
                 if (this.isHealing) {
                     ctx.shadowColor = '#00e676';
                     ctx.shadowBlur = 15;
@@ -507,54 +503,96 @@
                 ctx.lineCap = 'round';
                 ctx.lineJoin = 'round';
 
+                // --- Zmienne Animacyjne (Idle / Walk / Jump) ---
+                let bob = 0;
+                let foot1X = cx - 15, foot1Y = cy + 140;
+                let foot2X = cx + 15, foot2Y = cy + 140;
+                let pelvisY = cy + 90;
+
+                let isMoving = Math.abs(this.velocity.x) > 0.1 && this.velocity.y === 0;
+                let isJumping = this.velocity.y !== 0;
+
+                if (!this.isRolling && !this.awaitingFatality) {
+                    if (isMoving) {
+                        bob = -Math.abs(Math.sin(this.walkProgress)) * 5;
+                        foot1X = cx + Math.sin(this.walkProgress) * 25;
+                        foot1Y = cy + 140 - Math.max(0, Math.sin(this.walkProgress) * 15);
+                        foot2X = cx + Math.sin(this.walkProgress + Math.PI) * 25;
+                        foot2Y = cy + 140 - Math.max(0, Math.sin(this.walkProgress + Math.PI) * 15);
+                    } else if (!isJumping) {
+                        bob = Math.sin(this.idleProgress) * 3; // Oddech
+                    } else {
+                        // Skok - podkulone nogi
+                        foot1X = cx - 10; foot1Y = cy + 115;
+                        foot2X = cx + 20; foot2Y = cy + 125;
+                    }
+                } else if (this.isRolling) {
+                    pelvisY += 20;
+                    foot1Y -= 20; foot2Y -= 20;
+                }
+
+                // Górna część ciała reaguje na bobbing
+                const upperY = cy + bob;
+
+                // Rysowanie Głowy
                 if (this.isEnemy && enemyFace.complete) {
-                    const faceSize = 60;
-                    ctx.drawImage(enemyFace, cx - faceSize / 2, cy - 15, faceSize, faceSize);
+                    ctx.drawImage(enemyFace, cx - 30, upperY - 10, 60, 60);
                 } else {
                     ctx.beginPath();
-                    ctx.arc(cx, cy + 20, 15, 0, Math.PI * 2);
+                    ctx.arc(cx, upperY + 20, 15, 0, Math.PI * 2);
                     ctx.stroke();
                 }
 
                 let dropArm = this.awaitingFatality ? 30 : 0;
 
-                ctx.beginPath(); ctx.moveTo(cx, cy + 35); ctx.lineTo(cx, cy + 90); ctx.stroke();
+                // Rysowanie Tułowia i Nóg
+                ctx.beginPath(); 
+                ctx.moveTo(cx, upperY + 35); ctx.lineTo(cx, pelvisY); 
+                ctx.stroke();
                 
-                let crouch = this.isRolling ? -20 : 0;
                 ctx.beginPath();
-                ctx.moveTo(cx, cy + 90); ctx.lineTo(cx - 15, cy + 140 + crouch); 
-                ctx.moveTo(cx, cy + 90); ctx.lineTo(cx + 15, cy + 140 + crouch); 
+                ctx.moveTo(cx, pelvisY); ctx.lineTo(foot1X, foot1Y); 
+                ctx.moveTo(cx, pelvisY); ctx.lineTo(foot2X, foot2Y); 
                 ctx.stroke();
 
-                const armY = cy + 50;
+                // Rysowanie Ramion i Miecza
+                const armBaseY = upperY + 35; // Bary
                 let handX = cx + dir * 30;
-                let handY = cy + 60 + dropArm;
+                let handY = upperY + 25;
                 let swordAngle = dir * (Math.PI / 4);
                 
                 if (this.isAttacking && !this.awaitingFatality && !this.isRolling) {
                     const p = this.attackProgress;
                     if (this.attackType === 1) {
                         handX = cx + dir * (30 + Math.sin(p * Math.PI) * 50);
-                        handY = cy + 50;
+                        handY = upperY + 15;
                         swordAngle = dir * (Math.PI / 2);
                     } else if (this.attackType === 2) {
                         handX = cx + dir * (30 + Math.sin(p * Math.PI) * 40);
-                        handY = cy + 60 - Math.sin(p * Math.PI) * 30;
+                        handY = upperY + 25 - Math.sin(p * Math.PI) * 30;
                         swordAngle = dir * (-Math.PI/4 + p * Math.PI * 1.5);
                     }
                 } else if (this.isRolling) {
                     handX = cx + dir * 15;
-                    handY = cy + 70;
+                    handY = upperY + 35;
                     swordAngle = dir * (Math.PI / 2);
                 } else if (this.isHealing) {
-                    // Animacja trzymania butelki (ręka do góry)
                     handX = cx + dir * 10;
-                    handY = cy + 20;
+                    handY = upperY - 15;
                     swordAngle = dir * (Math.PI / 4);
+                } else if (isMoving && !this.awaitingFatality) {
+                    // Ramiona pracują naprzemiennie w biegu
+                    handX = cx + dir * 20 + Math.sin(this.walkProgress + Math.PI) * 15;
+                    handY = upperY + 30;
+                } else if (!isJumping && !this.awaitingFatality) {
+                    // Ramiona oddychają razem z tułowiem
+                    handY = upperY + 25 + Math.sin(this.idleProgress) * 2;
                 }
 
+                handY += dropArm;
+
                 ctx.beginPath();
-                ctx.moveTo(cx, armY); 
+                ctx.moveTo(cx, armBaseY); 
                 ctx.lineTo(handX, handY); 
                 ctx.stroke();
 
@@ -567,6 +605,14 @@
 
             update() {
                 if (this.shattered) return;
+
+                // Postęp animacji proceduralnych
+                this.idleProgress += 0.05;
+                if (Math.abs(this.velocity.x) > 0.1 && this.velocity.y === 0 && !this.isRolling) {
+                    this.walkProgress += 0.2;
+                } else {
+                    this.walkProgress = 0; 
+                }
                 
                 if (this.isRolling) {
                     this.rollProgress += 0.04;
@@ -731,13 +777,12 @@
 
             if (!player.awaitingFatality) {
                 
-                // Decyzja o leczeniu (jeśli ma mało HP, Estusy i nie jest atakowany w tej sekundzie)
                 if (enemy.health <= 40 && enemy.estusCount > 0 && Math.abs(distanceX) > 100) {
-                    if (Math.random() < 0.02) { // 2% szansy co klatkę na odpalenie poty
+                    if (Math.random() < 0.02) { 
                         if (enemy.heal()) {
                             updateEstusUI(enemy, 'enemyEstus');
                             document.getElementById('enemyHealth').style.width = enemy.health + '%';
-                            return; // Uciekamy z funkcji by nie nadpisywać ruchu
+                            return; 
                         }
                     }
                 }
@@ -788,7 +833,6 @@
                     enemy.facingRight = enemy.position.x < player.position.x;
                 }
 
-                // Zablokuj sterowanie ruchem, gdy trwa roll, leczenie lub oczekiwanie na fatality
                 if (!player.awaitingFatality && !player.shattered && !player.isRolling && !player.isHealing) {
                     player.velocity.x = 0;
                     if (keys.a.pressed && player.lastKey === 'a') player.velocity.x = -5;
@@ -797,7 +841,6 @@
 
                 updateAI();
 
-                // Kolizje i I-FRAMES
                 [ {attacker: player, victim: enemy}, {attacker: enemy, victim: player} ].forEach(pair => {
                     const a = pair.attacker;
                     const v = pair.victim;
