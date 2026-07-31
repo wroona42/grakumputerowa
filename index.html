@@ -76,7 +76,6 @@
             text-align: center;
         }
         
-        /* Legenda */
         #legend {
             margin-top: 20px;
             background: #333;
@@ -158,6 +157,11 @@
         const ctx = canvas.getContext('2d');
         const gravity = 0.7;
 
+        // Limiter FPS
+        const fps = 60;
+        const fpsInterval = 1000 / fps;
+        let then = performance.now();
+
         // Dźwięki
         const sndAttack = new Audio('attack1.mp3');
         const sndFinish = new Audio('finish.mp3');
@@ -172,7 +176,6 @@
         const enemyFace = new Image();
         enemyFace.src = 'image_fa6dc5.png';
 
-        // Cząsteczki (do rozpadu ciała i krwi)
         let particles = [];
 
         class Particle {
@@ -181,21 +184,20 @@
                 this.type = type; this.color = color; this.faceImg = faceImg;
                 this.rotation = 0;
                 this.rotSpeed = (Math.random() - 0.5) * 0.4;
-                this.size = Math.random() * 5 + 3; // Rozmiar dla kropel krwi
+                this.size = Math.random() * 5 + 3;
             }
 
             update() {
                 this.x += this.vx;
                 this.y += this.vy;
                 
-                // Kolizja z podłogą, aby cząsteczki opadały na ziemię
                 if (this.y < canvas.height - 50) {
                     this.vy += gravity;
                     this.rotation += this.rotSpeed;
                 } else {
                     this.y = canvas.height - 50;
                     this.vy = 0;
-                    this.vx *= 0.5; // Tarcie
+                    this.vx *= 0.5;
                     this.rotSpeed = 0;
                 }
             }
@@ -206,13 +208,11 @@
                 ctx.rotate(this.rotation);
                 
                 if (this.type === 'blood') {
-                    // Krew
                     ctx.fillStyle = this.color;
                     ctx.beginPath();
                     ctx.arc(0, 0, this.size, 0, Math.PI * 2);
                     ctx.fill();
                 } else {
-                    // Kończyny i głowa
                     ctx.strokeStyle = this.color;
                     ctx.lineWidth = 5;
                     ctx.lineCap = 'round';
@@ -245,7 +245,6 @@
                 this.health = 100;
                 this.isEnemy = isEnemy;
                 this.facingRight = !isEnemy;
-                
                 this.awaitingFatality = false;
                 this.shattered = false;
             }
@@ -255,7 +254,6 @@
                 const cx = this.position.x + this.width / 2;
                 const cy = this.position.y;
                 
-                // Części ciała
                 particles.push(new Particle(cx, cy+20, (Math.random()-0.5)*15, -Math.random()*15 - 5, 'head', this.color, this.isEnemy ? enemyFace : null));
                 particles.push(new Particle(cx, cy+60, (Math.random()-0.5)*15, -Math.random()*15, 'limb', this.color));
                 particles.push(new Particle(cx-15, cy+70, (Math.random()-0.5)*15, -Math.random()*15, 'limb', this.color));
@@ -263,7 +261,6 @@
                 particles.push(new Particle(cx-15, cy+110, (Math.random()-0.5)*15, -Math.random()*15, 'limb', this.color));
                 particles.push(new Particle(cx+15, cy+110, (Math.random()-0.5)*15, -Math.random()*15, 'limb', this.color));
 
-                // Efekt krwi (dużo czerwonych cząsteczek lecących na wszystkie strony)
                 for(let i = 0; i < 50; i++) {
                     particles.push(new Particle(
                         cx + (Math.random() - 0.5) * 40, 
@@ -271,7 +268,7 @@
                         (Math.random() - 0.5) * 25, 
                         -Math.random() * 20, 
                         'blood', 
-                        '#b71c1c' // Głęboki czerwony
+                        '#b71c1c'
                     ));
                 }
             }
@@ -406,10 +403,10 @@
                 res.style.color = '#333';
             } else if (player.health > enemy.health) {
                 res.innerHTML = isFatality ? 'FATALITY!<br><span style="font-size:32px;">GNIAZDO NOSTALGII WYGRYWA</span>' : 'GNIAZDO NOSTALGII WYGRYWA!';
-                res.style.color = isFatality ? '#b71c1c' : '#333'; // Zmiana na krwisty czerwony
+                res.style.color = isFatality ? '#b71c1c' : '#333';
             } else {
                 res.innerHTML = isFatality ? 'FATALITY!<br><span style="font-size:32px;">PRZEGRAŁEŚ</span>' : 'PRZEGRAŁEŚ!';
-                res.style.color = isFatality ? '#b71c1c' : '#333'; // Zmiana na krwisty czerwony
+                res.style.color = isFatality ? '#b71c1c' : '#333';
             }
             gameOver = true;
         }
@@ -428,6 +425,7 @@
             
             if (gameOver) {
                 gameOver = false;
+                then = performance.now(); // Resetujemy czas przed ponownym startem
                 animate();
             }
         }
@@ -484,66 +482,61 @@
             }
         }
 
-        function animate() {
-            if (gameOver && particles.length === 0) return; // Jeśli game over i brak animacji, nie odświeżaj klatek bez potrzeby
+        function animate(now) {
+            if (gameOver && particles.length === 0) return;
             window.requestAnimationFrame(animate);
 
-            // Rysowanie tła, a cząsteczki "ubrudzą" je na podłodze
-            ctx.fillStyle = '#e0e0e0'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
-            // Trochę krwi może zostać na ziemi więc rysujemy ziemie pierwszą
-            ctx.fillStyle = '#9e9e9e'; ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
+            // Mechanizm ustalający stałe 60 FPS
+            if (!now) now = performance.now();
+            const elapsed = now - then;
 
-            particles.forEach(p => { p.update(); p.draw(); });
+            // Jeśli minęło wystarczająco dużo czasu (powyżej 16.6ms), renderujemy klatkę
+            if (elapsed > fpsInterval) {
+                then = now - (elapsed % fpsInterval); // Korekta czasu zapobiegająca desynchronizacji
 
-            player.update();
-            enemy.update();
+                ctx.fillStyle = '#e0e0e0'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+                ctx.fillStyle = '#9e9e9e'; ctx.fillRect(0, canvas.height - 50, canvas.width, 50);
 
-            player.facingRight = player.position.x < enemy.position.x;
-            if (!enemy.isEnemy) enemy.facingRight = enemy.position.x < player.position.x;
+                particles.forEach(p => { p.update(); p.draw(); });
 
-            player.velocity.x = 0;
-            if (!player.awaitingFatality && !player.shattered) {
-                if (keys.a.pressed && player.lastKey === 'a') player.velocity.x = -5;
-                else if (keys.d.pressed && player.lastKey === 'd') player.velocity.x = 5;
-            }
+                player.update();
+                enemy.update();
 
-            updateAI();
+                player.facingRight = player.position.x < enemy.position.x;
+                if (!enemy.isEnemy) enemy.facingRight = enemy.position.x < player.position.x;
 
-            if (player.isAttacking && rectangularCollision({ rectangle1: player, rectangle2: enemy })) {
-                player.isAttacking = false;
-                handleHit(player, enemy, player.attackType === 1 ? 5 : 15);
-            }
+                player.velocity.x = 0;
+                if (!player.awaitingFatality && !player.shattered) {
+                    if (keys.a.pressed && player.lastKey === 'a') player.velocity.x = -5;
+                    else if (keys.d.pressed && player.lastKey === 'd') player.velocity.x = 5;
+                }
 
-            if (enemy.isAttacking && rectangularCollision({ rectangle1: enemy, rectangle2: player })) {
-                enemy.isAttacking = false;
-                handleHit(enemy, player, enemy.attackType === 1 ? 5 : 15);
+                updateAI();
+
+                if (player.isAttacking && rectangularCollision({ rectangle1: player, rectangle2: enemy })) {
+                    player.isAttacking = false;
+                    handleHit(player, enemy, player.attackType === 1 ? 5 : 15);
+                }
+
+                if (enemy.isAttacking && rectangularCollision({ rectangle1: enemy, rectangle2: player })) {
+                    enemy.isAttacking = false;
+                    handleHit(enemy, player, enemy.attackType === 1 ? 5 : 15);
+                }
             }
         }
 
-        animate();
+        // Inicjalizacja animacji
+        window.requestAnimationFrame(animate);
 
         window.addEventListener('keydown', (event) => {
             switch (event.key.toLowerCase()) {
-                case 'r':
-                    resetGame();
-                    break;
-                case 'd':
-                    if (!player.awaitingFatality && !gameOver) { keys.d.pressed = true; player.lastKey = 'd'; }
-                    break;
-                case 'a':
-                    if (!player.awaitingFatality && !gameOver) { keys.a.pressed = true; player.lastKey = 'a'; }
-                    break;
+                case 'r': resetGame(); break;
+                case 'd': if (!player.awaitingFatality && !gameOver) { keys.d.pressed = true; player.lastKey = 'd'; } break;
+                case 'a': if (!player.awaitingFatality && !gameOver) { keys.a.pressed = true; player.lastKey = 'a'; } break;
                 case 'w':
-                case ' ':
-                    if (!player.awaitingFatality && !gameOver && player.velocity.y === 0) player.velocity.y = -15;
-                    break;
-                case 'k':
-                    if (!player.awaitingFatality && !gameOver) player.attack(1);
-                    break;
-                case 'l':
-                    if (!player.awaitingFatality && !gameOver) player.attack(2);
-                    break;
+                case ' ': if (!player.awaitingFatality && !gameOver && player.velocity.y === 0) player.velocity.y = -15; break;
+                case 'k': if (!player.awaitingFatality && !gameOver) player.attack(1); break;
+                case 'l': if (!player.awaitingFatality && !gameOver) player.attack(2); break;
             }
         });
 
